@@ -2,7 +2,10 @@
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/lines-~1.7K-lightgrey" alt="~1700 lines">
-  <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <a href="README.md">📖 English</a>
 </p>
 
 # 🔬 ResearchAgent
