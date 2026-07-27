@@ -13,10 +13,16 @@ from __future__ import annotations
 import json
 from typing import Any, Sequence
 
-from .handler import ResearchHandler  # pyright: ignore[reportMissingImports]
-from .memory import MemoryStore
-from .prompts import SYSTEM_PROMPT_TEMPLATE  # pyright: ignore[reportMissingImports]
-from .tools import TOOLS_SCHEMA  # pyright: ignore[reportMissingImports]
+try:
+    from .handler import ResearchHandler  # pyright: ignore[reportMissingImports]
+    from .memory import MemoryStore
+    from .prompts import SYSTEM_PROMPT_TEMPLATE  # pyright: ignore[reportMissingImports]
+    from .tools import TOOLS_SCHEMA  # pyright: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover - direct script execution path.
+    from handler import ResearchHandler  # pyright: ignore[reportMissingImports]
+    from memory import MemoryStore
+    from prompts import SYSTEM_PROMPT_TEMPLATE  # pyright: ignore[reportMissingImports]
+    from tools import TOOLS_SCHEMA  # pyright: ignore[reportMissingImports]
 
 
 REFINE_QUESTION_PROMPT = (

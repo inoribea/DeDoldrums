@@ -5,16 +5,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from .lenses import discover_lenses  # pyright: ignore[reportMissingImports]
-from .memory import MemoryStore
-from .prompts import (  # pyright: ignore[reportMissingImports]
-    STAGE1_MULTI_PERSPECTIVE,
-    STAGE2_CONTRADICTION_MAP,
-    STAGE3_SYNTHESIS,
-    STAGE35_ADVERSARIAL_GATE,
-    STAGE4_PEER_REVIEW,
-)
-from .tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
+try:
+    from .lenses import discover_lenses  # pyright: ignore[reportMissingImports]
+    from .memory import MemoryStore
+    from .prompts import (  # pyright: ignore[reportMissingImports]
+        STAGE1_MULTI_PERSPECTIVE,
+        STAGE2_CONTRADICTION_MAP,
+        STAGE3_SYNTHESIS,
+        STAGE35_ADVERSARIAL_GATE,
+        STAGE4_PEER_REVIEW,
+    )
+    from .tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover - direct script execution path.
+    from lenses import discover_lenses  # pyright: ignore[reportMissingImports]
+    from memory import MemoryStore
+    from prompts import (  # pyright: ignore[reportMissingImports]
+        STAGE1_MULTI_PERSPECTIVE,
+        STAGE2_CONTRADICTION_MAP,
+        STAGE3_SYNTHESIS,
+        STAGE35_ADVERSARIAL_GATE,
+        STAGE4_PEER_REVIEW,
+    )
+    from tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
 
 
 @dataclass

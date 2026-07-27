@@ -10,9 +10,14 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .lenses import LENS_LIBRARY, get_lens
-from .memory import MemoryStore
-from .prompts import REFLECT_SYSTEM_PROMPT
+try:
+    from .lenses import LENS_LIBRARY, get_lens
+    from .memory import MemoryStore
+    from .prompts import REFLECT_SYSTEM_PROMPT
+except ImportError:  # Supports direct execution from the package directory.
+    from lenses import LENS_LIBRARY, get_lens
+    from memory import MemoryStore
+    from prompts import REFLECT_SYSTEM_PROMPT
 
 
 TOOLS_SCHEMA = [
