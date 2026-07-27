@@ -120,11 +120,17 @@ class ResearchBridge:
 
     def _run_research(self, session: ResearchSession) -> None:
         """Run blocking research in a worker thread and translate outcomes to SSE events."""
+        logger = logging.getLogger("bridge")
         try:
             session.add_event("stage_change", {"stage": 0, "description": self._stage_name(0)})
             if session.cancelled.is_set():
                 return
+            logger.info("Starting research: %s", session.question[:80])
             brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=50))
+            logger.info("Research completed — brief: %d chars, findings: %d",
+                        len(brief), len(getattr(session.handler, "findings", [])))
+            if len(brief) < 50:
+                logger.warning("Brief is suspiciously short: %r", brief)
             if session.cancelled.is_set():
                 return
             session.add_event("stage_change", {"stage": 3.5, "description": self._stage_name(3.5)})
@@ -141,6 +147,7 @@ class ResearchBridge:
             })
             session.memory.archive_session(session.question, [{"final_brief": brief}])
         except Exception as exc:  # The event stream remains usable after a failed run.
+            logger.error("Research failed: %s", exc, exc_info=True)
             session.add_event("error", {"message": str(exc)})
         finally:
             session.done = True
