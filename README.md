@@ -1,18 +1,18 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/lines-~1.7K-lightgrey" alt="~1700 lines">
+  <img src="https://img.shields.io/badge/lines-~2.5K-lightgrey" alt="~2500 lines">
 </p>
 
 <p align="center">
-  <a href="README_zh.md">中文</a>
+  <a href="README_zh.md">📖 中文文档</a>
 </p>
 
 # 🔬 ResearchAgent
 
 > *Design philosophy — **minimal seed, self-evolving researcher.** Don't preload knowledge, discover it.*
 
-**ResearchAgent** is a self-evolving research agent built on [GenericAgent](https://github.com/lsdefine/GenericAgent)'s execution philosophy and a hybrid [STORM](https://arxiv.org/abs/2402.14207) multi-perspective methodology. You ask a question. The agent autonomously discovers perspectives, collects evidence, challenges its own conclusions, and synthesizes a research brief — all in ~1,700 lines of Python.
+**ResearchAgent** is a self-evolving research agent built on [GenericAgent](https://github.com/lsdefine/GenericAgent)'s execution philosophy and a hybrid [STORM](https://arxiv.org/abs/2402.14207) multi-perspective methodology. You ask a question. The agent autonomously discovers perspectives, collects evidence, challenges its own conclusions, and synthesizes a research brief.
 
 ---
 
@@ -22,12 +22,12 @@ A GenericAgent studies **computers**. A ResearchAgent studies **topics**. Same s
 
 | GenericAgent | ResearchAgent |
 |:---|:---|
-| 9 computer-control tools (`code_run`, `web_scan`, `file_read`…) | 4 knowledge-operation tools (`explore`, `reflect`, `challenge`, `crystallize`) |
+| 9 computer-control tools | 4 knowledge-operation tools (`explore`, `reflect`, `challenge`, `crystallize`) |
 | Task execution loop | 5.5-stage STORM research pipeline |
 | Self-evolves via task→SOP | Self-evolves via insight→thinking pattern |
 | Goal Mode: create→verify→improve | Goal Mode: explore→verify→deepen |
 
-Instead of preloading "what a good research looks like," ResearchAgent discovers perspectives dynamically, stress-tests every finding through an adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs — growing smarter with every session.
+Instead of preloading "what good research looks like," ResearchAgent discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs.
 
 ---
 
@@ -35,28 +35,29 @@ Instead of preloading "what a good research looks like," ResearchAgent discovers
 
 | Feature | Description |
 |:---|:---|
-| 🧬 **Self-Evolving** | Crystallizes breakthrough insights into L3 thinking SOPs; Goal Mode keeps digging until budget runs out |
-| 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from search results — not hardcoded roles (from original STORM paper) |
-| ⚔️ **Adversarial Gate** | Stage 3.5 auto-challenges every key finding: logic flaws, hidden assumptions, missing evidence, alternative explanations (from Caesar) |
-| 🗺️ **Contradiction Mapping** | Surfaces conflicts between perspectives — where they agree (likely true), where they're all silent (biggest blind spots) |
-| 📊 **Confidence Scoring** | Every finding rated 1-10 with explicit reasoning; weak claims flagged for follow-up |
-| 🧠 **L0-L4 Memory** | Meta-rules → pattern index → domain knowledge + graph edges → thinking SOPs → session archives |
-| 🔌 **Multi-Platform** | One Bridge server → Telegram, Discord, Vercel Web through ~100-line adapters |
+| 🧬 **Self-Evolving** | Crystallizes insights into L3 thinking SOPs; Goal Mode deepens across iterations with prior context |
+| 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from search results — usable as first-class lens identities |
+| ⚔️ **Adversarial Gate** | Stage 3.5 requires real challenge calls; findings with detected issues are marked for revision |
+| 🗺️ **Contradiction Mapping** | Surfaces conflicts between perspectives — consensus zones and collective blind spots |
+| 🎭 **Multi-Role LLM** | Four roles (conversational, tool_calling, creative, content_review) each routed to different models/backends |
+| 🔌 **Multi-Provider** | 5 backends (chat / responses / messages / completions / v1beta) × 7 providers (OpenAI, Anthropic, DeepSeek, Kimi, Zhipu, Google, OpenAI-Completion) |
+| 🧠 **L0-L4 Memory** | Meta-rules → pattern index → domain knowledge → thinking SOPs → session archives |
+| 🌐 **Multi-Platform** | One Bridge server → Web UI, Telegram, Discord, Vercel |
 
 ---
 
 ## 🎯 The 5.5-Stage Pipeline
 
 ```
-Stage 0   — Dynamic Lens Discovery    (topic-specific perspectives via search)
-Stage 1   — Multi-Perspective Scan    (5 lenses × independent exploration)
+Stage 0   — Dynamic Lens Discovery    (web search → LLM → topic-specific perspectives)
+Stage 1   — Multi-Perspective Scan    (dynamic lenses × independent exploration)
 Stage 2   — Contradiction Map         (conflicts, consensus, blind spots)
 Stage 3   — Synthesis                 (cross-lens connections → structured brief)
-Stage 3.5 — ⚔️ Adversarial Gate       (Generator-Verifier pressure test on every finding)
+Stage 3.5 — ⚔️ Adversarial Gate       (enforced challenge — requires ≥1 finding examined)
 Stage 4   — Peer Review               (confidence scores, bias check, missing angles)
 ```
 
-> ⚠️ **Stage 3.5 is a gate — not a suggestion.** Every key finding must survive adversarial challenge before entering peer review. If Verifier finds substantive flaws → fix → re-verify. No unverified claims make it through.
+> ⚠️ **Stage 3.5 requires real challenges.** The gate won't advance until findings have been examined. No rubber-stamping.
 
 ---
 
@@ -68,74 +69,63 @@ Stage 4   — Peer Review               (confidence scores, bias check, missing 
 git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt                      # 4 dependencies total
-cp .env.example .env                                 # fill in OPENAI_API_KEY
+cp .env.example .env                                 # configure LLM roles
 ```
 
-**CLI mode** — single research session:
+**CLI mode:**
 
 ```bash
 python main.py "What is the real timeline for quantum computing to break RSA?"
 python main.py --goal --budget 30 "Comparing feasible AGI governance frameworks"
 ```
 
-**Web UI mode** — full research station with built-in frontend:
+**Web UI mode:**
 
 ```bash
-python bridge.py                     # → http://127.0.0.1:14168
+python bridge.py                     # → http://127.0.0.1:18765
 ```
 
-Open your browser. Type a question. Watch the 5.5-stage pipeline in real time. No Vercel, no external services — the bridge serves the web frontend directly.
+Open your browser. Type a question. Watch the 5.5-stage pipeline with live status and a collapsible thinking log.
 
-**With bots** (optional):
-
-```bash
-export TELEGRAM_BOT_TOKEN="..."      # optional
-export DISCORD_BOT_TOKEN="..."       # optional
-python launch.py                      # starts bridge + all configured bots
-```
-
-### Option B: Docker (recommended for servers)
+### Option B: Docker
 
 ```bash
 git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
-cp .env.example .env                 # fill in OPENAI_API_KEY
-docker compose up -d                 # → http://localhost:14168
+cp .env.example .env
+docker compose up -d                 # → http://localhost:18765
 ```
 
-The `docker-compose.yml` mounts `./memory/` as a volume — your agent's knowledge persists across restarts.
+The `docker-compose.yml` mounts `./memory/` as a volume — knowledge persists across restarts.
 
-### Option C: systemd (Linux servers)
+### Option C: systemd (Linux)
 
 ```bash
 sudo cp systemd/research-agent.service /etc/systemd/system/
 sudo useradd -r -s /bin/false research
-sudo mkdir -p /opt/research-agent
-sudo cp -r . /opt/research-agent/
+sudo mkdir -p /opt/research-agent && sudo cp -r . /opt/research-agent/
 sudo cp .env /opt/research-agent/
 cd /opt/research-agent && python -m venv .venv && .venv/bin/pip install -r requirements.txt
-sudo systemctl daemon-reload
-sudo systemctl enable --now research-agent    # → http://your-server:14168
+sudo systemctl daemon-reload && sudo systemctl enable --now research-agent
 ```
 
-### LLM Provider Configuration
+### LLM Configuration
 
-Edit `.env` — any OpenAI-compatible provider works:
+Each research role can use a different model/provider. Format: `PROVIDER/MODEL_ID`.
 
 ```bash
-# OpenAI
+LLM_TOOL_CALLING=openai/gpt-5.5              # core loop, tool selection & pipeline orchestration
+LLM_CREATIVE=anthropic/claude-sonnet-5       # divergent thinking, lens discovery & reflection
+LLM_CONVERSATIONAL=openai/gpt-5.5-mini       # user interaction, question refinement & final report
+LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge & verification
+
+# Provider API keys
 OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# Azure OpenAI
-OPENAI_API_KEY=...
-OPENAI_BASE_URL=https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT
-
-# Local (ollama / vllm / LM Studio)
-OPENAI_API_KEY=not-needed
-OPENAI_BASE_URL=http://localhost:11434/v1    # ollama default
+ANTHROPIC_API_KEY=sk-ant-...
+DEEPSEEK_API_KEY=sk-...
+KIMI_API_KEY=sk-...
 ```
 
-### Vercel Frontend (public access, no server needed)
+### Vercel Frontend
 
 ```bash
 cd vercel && npm install
@@ -143,7 +133,7 @@ cd vercel && npm install
 npx vercel deploy --prod
 ```
 
-The Vercel Edge Functions proxy SSE to your bridge — users access the web UI without touching your server directly.
+The frontend polls the bridge through Vercel API routes every 2 seconds — no direct connection needed.
 
 ---
 
@@ -154,52 +144,55 @@ research_agent/
 ├── agent_loop.py       # async main loop (LLM → dispatch → stage advance)
 ├── handler.py          # tool router + 5.5-stage state machine
 ├── tools.py            # explore / reflect / challenge / crystallize
-├── llm.py              # OpenAI-compatible client (httpx, zero framework deps)
-├── memory.py           # L0-L4 layered memory + L2 graph index
-├── lenses.py           # dynamic lens discovery + 9-lens fallback library
+├── llm.py              # 5 backends + 7-provider registry + role-based LLMRouter
+├── memory.py           # L0-L4 layered memory
+├── lenses.py           # dynamic lens discovery + 9-lens static library
 ├── prompts.py          # STORM stage prompt templates
 ├── goal_mode.py        # continuous self-driven loop (ported from GA)
 ├── main.py             # CLI entry
-├── config.py           # env-based config
-├── bridge.py           # aiohttp HTTP+SSE server
+├── config.py           # role-based LLM config + provider resolution
+├── bridge.py           # aiohttp HTTP+SSE server + built-in frontend hosting
 ├── launch.py           # one-click: bridge + bots
 ├── adapters/           # Telegram / Discord bot adapters
-└── vercel/             # Vercel Edge Functions + web frontend
+├── vercel/             # Next.js 14 + shadcn/ui frontend + API proxy routes
+├── Dockerfile          # containerized deployment
+├── docker-compose.yml  # one-command Docker deployment
+└── systemd/            # systemd service template
 ```
 
 ### The 4 Knowledge Tools
 
 | Tool | Schema | Does |
 |:---|:---|:---|
-| `explore` | `query` + `source` (web/memory/url) | DuckDuckGo search, local memory search, deep URL reading |
-| `reflect` | `lens` + `focus` | Applies a thinking lens (practitioner/skeptic/economist/...) to analyze findings |
-| `challenge` | `target` + `mode` | Adversarial pressure test: logic flaws, hidden assumptions, missing evidence, alternatives |
-| `crystallize` | `insight` + `category` | Persists breakthrough patterns into layered memory for future reuse |
+| `explore` | `query` + `source` (web/memory/url) | DuckDuckGo search, memory retrieval, URL deep reading |
+| `reflect` | `lens` + `focus` | Applies a thinking lens (dynamic or static) to analyze findings |
+| `challenge` | `target` + `mode` | Adversarial pressure test: logic, assumptions, evidence, alternatives |
+| `crystallize` | `insight` + `category` | Persists breakthroughs into layered memory for future sessions |
 
 ---
 
 ## 📚 Methodology
 
-ResearchAgent fuses three lines of work:
+ResearchAgent fuses four lines of work:
 
 | Source | What We Took | Reference |
 |:---|:---|:---|
-| **GenericAgent** | Execution framework | [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent) |
+| **GenericAgent** | Execution framework (StepOutcome, dispatch, Goal Mode) | [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent) |
 | **STORM (original)** | Dynamic perspective discovery | [Shao et al., NAACL 2024](https://arxiv.org/abs/2402.14207) |
 | **STORM (community)** | 4-stage framework + contradiction mapping + peer review | [storm-research-method](https://github.com/kamilwpaczce-svg/storm-research-method) |
-| **Caesar** | Generator-Verifier adversarial loop + graph-structured knowledge | Liang et al., 2026 |
+| **Caesar** | Generator-Verifier adversarial loop | Liang et al., 2026 |
 
-> The original STORM paper outputs Wikipedia-style articles. The community fork invented contradiction mapping, peer review, and confidence scoring — mechanisms the original paper acknowledged as missing. This project goes further: dynamic lenses (from original STORM), adversarial gate (from Caesar), graph-indexed memory.
+> The original STORM paper outputs Wikipedia-style articles. The community fork added contradiction mapping and peer review. This project adds enforced adversarial gating and dynamic lenses that work as first-class tool identities.
 
 ---
 
 ## 🙏 Acknowledgments
 
-Built on the shoulders of [**GenericAgent**](https://github.com/lsdefine/GenericAgent) — the `StepOutcome`-dispatch pattern, Goal Mode self-driven loop, and layered memory design are directly ported from GA. Its proof that ~3K lines can cover full computer control inspired this project's minimalist approach.
+Built on the shoulders of [**GenericAgent**](https://github.com/lsdefine/GenericAgent) — the `StepOutcome`-dispatch pattern, Goal Mode self-driven loop, and layered memory design are directly ported from GA.
 
-Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for the core insight of multi-perspective analysis breaking single-viewpoint blindness, and the community fork for inventing the contradiction-mapping + peer-review mechanisms.
+Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for multi-perspective analysis, and the community fork for contradiction mapping + peer review mechanisms.
 
-Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework that became Stage 3.5.
+Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework.
 
 ---
 
