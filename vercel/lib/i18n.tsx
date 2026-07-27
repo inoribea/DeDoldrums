@@ -27,6 +27,7 @@ export interface Translations {
   "input.example": string;
   "input.start": string;
   "input.researching": string;
+"input.cancel": string;
   "input.press": string;
   "input.newResearch": string;
 
@@ -90,6 +91,7 @@ const en: Translations = {
     "What is the real timeline for quantum computing to break RSA?",
   "input.start": "Start research",
   "input.researching": "Researching…",
+"input.cancel": "Stop",
   "input.press": "Press",
   "input.newResearch": "New research",
 
@@ -145,6 +147,7 @@ const zh: Translations = {
   "input.example": "量子计算对 RSA 的真实威胁时间线是什么？",
   "input.start": "开始研究",
   "input.researching": "研究进行中…",
+"input.cancel": "停止",
   "input.press": "按",
   "input.newResearch": "重新研究",
 

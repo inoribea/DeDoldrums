@@ -39,6 +39,7 @@ const INITIAL_STATE: UseResearchState = {
 
 interface UseResearchReturn extends UseResearchState {
   start: (question: string) => Promise<void>;
+  cancel: () => Promise<void>;
   reset: () => void;
 }
 
@@ -60,6 +61,7 @@ export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
   const eventSourceRef = useRef<EventSource | null>(null);
   const findingsCountRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
   const { t } = useLanguage();
 
   const closeStream = useCallback(() => {
@@ -73,7 +75,20 @@ export function useResearch(): UseResearchReturn {
   const reset = useCallback(() => {
     closeStream();
     findingsCountRef.current = 0;
+    sessionIdRef.current = null;
     setState(INITIAL_STATE);
+  }, [closeStream]);
+
+  const cancel = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      await fetch(`/api/session/${encodeURIComponent(sid)}/cancel`, { method: "POST" });
+    } catch {
+      // best-effort — close locally regardless
+    }
+    closeStream();
+    setState((s) => ({ ...s, status: "complete" as const }));
   }, [closeStream]);
 
   const start = useCallback(
@@ -102,6 +117,7 @@ export function useResearch(): UseResearchReturn {
         }
         const { sessionId } = (await newResp.json()) as { sessionId: string };
         if (!sessionId) throw new Error("Bridge returned no session id");
+        sessionIdRef.current = sessionId;
 
         setState((s) => ({
           ...s,
@@ -238,5 +254,5 @@ export function useResearch(): UseResearchReturn {
 
   useEffect(() => () => closeStream(), [closeStream]);
 
-  return { ...state, start, reset };
+  return { ...state, start, cancel, reset };
 }

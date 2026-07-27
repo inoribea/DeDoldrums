@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Loader2, RotateCcw, Search } from "lucide-react";
+import { AlertCircle, Loader2, RotateCcw, Search, Square } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ export default function Home() {
     confidence,
     error,
     start,
+    cancel,
     reset,
   } = research;
 
@@ -88,6 +89,12 @@ export default function Home() {
                   </>
                 )}
               </Button>
+              {isBusy && (
+                <Button variant="outline" onClick={cancel} className="gap-2">
+                  <Square className="h-4 w-4" />
+                  {t("input.cancel")}
+                </Button>
+              )}
               <span className="text-xs text-muted-foreground">
                 {t("input.press")}{" "}
                 <kbd className="rounded border border-border bg-secondary px-1 py-0.5 font-mono text-[10px]">

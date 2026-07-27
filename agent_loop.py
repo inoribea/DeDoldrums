@@ -105,6 +105,21 @@ async def research_loop(
                 return final_response.content
             continue
 
+        # Append assistant message with tool_calls before tool results
+        # (required by OpenAI/DeepSeek API message ordering)
+        messages.append({
+            "role": "assistant",
+            "content": response.content or None,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in response.tool_calls
+            ],
+        })
+
         for tool_call in response.tool_calls:
             try:
                 arguments = json.loads(tool_call.function.arguments)
