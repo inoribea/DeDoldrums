@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx  # pyright: ignore[reportMissingImports]
+import logging
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 PROVIDER_REGISTRY = {
