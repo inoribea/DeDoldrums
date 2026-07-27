@@ -98,7 +98,8 @@ class ResearchBridge:
             return web.json_response({"error": "question is required"}, status=400)
         sid = f"rs_{uuid.uuid4().hex[:12]}"
         self.sessions[sid] = ResearchSession(sid=sid, question=question)
-        return web.json_response({"sessionId": sid, "question": question})
+        host = request.headers.get("Host", "")
+        return web.json_response({"sessionId": sid, "question": question, "bridgeUrl": f"http://{host}"})
 
     async def handle_session_question(self, request: web.Request) -> web.Response:
         session = self.sessions.get(request.match_info["sid"])
@@ -164,6 +165,7 @@ class ResearchBridge:
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
         })
         await response.prepare(request)
         loop = asyncio.get_running_loop()

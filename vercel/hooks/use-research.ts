@@ -117,7 +117,7 @@ export function useResearch(): UseResearchReturn {
         if (!newResp.ok) {
           throw new Error(`Failed to create session (${newResp.status})`);
         }
-        const { sessionId } = (await newResp.json()) as { sessionId: string };
+        const { sessionId, bridgeUrl } = (await newResp.json()) as { sessionId: string; bridgeUrl?: string };
         if (!sessionId) throw new Error("Bridge returned no session id");
         sessionIdRef.current = sessionId;
 
@@ -138,7 +138,10 @@ export function useResearch(): UseResearchReturn {
           throw new Error(`Failed to start research (${startResp.status})`);
         }
 
-        const streamUrl = `/api/research/stream?sid=${encodeURIComponent(sessionId)}`;
+        // Connect SSE directly to bridge (bypasses Vercel 60s function timeout)
+        const streamUrl = bridgeUrl
+          ? `${bridgeUrl}/session/${encodeURIComponent(sessionId)}/stream`
+          : `/api/research/stream?sid=${encodeURIComponent(sessionId)}`;
         const es = new EventSource(streamUrl);
         eventSourceRef.current = es;
 
