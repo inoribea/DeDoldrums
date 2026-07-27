@@ -30,7 +30,15 @@ export async function GET(
     const url = `${bridgeUrl}/session/${encodeURIComponent(sid)}/history`
     const upstream = await fetch(url, { headers })
     const data = await upstream.json().catch(() => null)
-    if (data) return json(data, { status: upstream.status })
+    if (data) {
+      return new Response(JSON.stringify(data), {
+        status: upstream.status,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      })
+    }
     return json({ error: `Bridge returned non-JSON (${upstream.status})` }, { status: 502 })
   } catch (e) {
     return json({ error: `Bridge unreachable: ${e instanceof Error ? e.message : String(e)}` }, { status: 502 })

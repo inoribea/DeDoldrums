@@ -194,7 +194,7 @@ export function useResearch(): UseResearchReturn {
         console.log("[poll] tick", pollCount + 1, "stopped:", stoppedRef.current);
         if (stoppedRef.current) return;
         pollCount++;
-        fetch(`${base}/api/session/${encodeURIComponent(sid)}/history`)
+        fetch(`${base}/api/session/${encodeURIComponent(sid)}/history?_=${Date.now()}`)
           .then((r) => {
             if (!r.ok || stoppedRef.current) return null;
             return r.json() as Promise<{ done: boolean; messages: string[] }>;
@@ -286,7 +286,7 @@ export function useResearch(): UseResearchReturn {
     if (!saved?.sid) return;
     // Check if session still exists on bridge
     const base = window.location.origin;
-    fetch(`${base}/api/session/${encodeURIComponent(saved.sid)}/history`)
+    fetch(`${base}/api/session/${encodeURIComponent(saved.sid)}/history?_=${Date.now()}`)
       .then((r) => {
         if (!r.ok) { clearSession(); return; }
         return r.json();
