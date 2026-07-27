@@ -63,15 +63,17 @@ function summarizeFinding(data: {
 
 export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const findingsCountRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
   const seenCountRef = useRef(0);
+  const stoppedRef = useRef(false);
   const { t } = useLanguage();
 
   const stopPolling = useCallback(() => {
+    stoppedRef.current = true;
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, []);
@@ -81,6 +83,7 @@ export function useResearch(): UseResearchReturn {
     findingsCountRef.current = 0;
     seenCountRef.current = 0;
     sessionIdRef.current = null;
+    stoppedRef.current = false;
     setState(INITIAL_STATE);
   }, [stopPolling]);
 
@@ -191,38 +194,44 @@ export function useResearch(): UseResearchReturn {
 
         setState((s) => ({ ...s, status: "streaming" }));
 
-        // Poll history every POLL_INTERVAL ms
+        // Poll history with recursive setTimeout
+        stoppedRef.current = false;
         const sid = sessionId;
         let pollCount = 0;
         const poll = async () => {
+          if (stoppedRef.current) return;
           pollCount++;
           try {
             const histResp = await fetch(
               `${base}/api/session/${encodeURIComponent(sid)}/history`,
             );
-            if (!histResp.ok) return;
+            if (!histResp.ok || stoppedRef.current) return;
             const data = (await histResp.json()) as { done: boolean; messages: string[] };
             const msgCount = data.messages?.length || 0;
             if (msgCount > seenCountRef.current) {
               console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
             }
             processMessages(data.messages || []);
-            if (data.done) {
+            if (data.done || stoppedRef.current) {
               stopPolling();
-              setState((s) => {
-                if (s.status !== "complete" && s.status !== "error") {
-                  return { ...s, status: "complete" };
-                }
-                return s;
-              });
+              if (data.done) {
+                setState((s) => {
+                  if (s.status !== "complete" && s.status !== "error") {
+                    return { ...s, status: "complete" };
+                  }
+                  return s;
+                });
+              }
+              return;
             }
           } catch (e) {
             console.warn("[poll] error:", e);
           }
+          if (!stoppedRef.current) {
+            pollingRef.current = setTimeout(poll, POLL_INTERVAL);
+          }
         };
-
-        pollingRef.current = setInterval(poll, POLL_INTERVAL);
-        void poll(); // immediate first poll
+        pollingRef.current = setTimeout(poll, 0);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unexpected request failure";
         setState((s) => ({ ...s, status: "error", error: message }));
