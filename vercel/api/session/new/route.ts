@@ -13,7 +13,7 @@ export async function POST(request: Request): Promise<Response> {
       headers.set('Authorization', `Bearer ${process.env.BRIDGE_API_KEY}`)
     }
 
-    const upstream = await fetch(`${bridgeUrl}/session/new`, {
+    const upstream = await fetch(new URL('/session/new', bridgeUrl).toString(), {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

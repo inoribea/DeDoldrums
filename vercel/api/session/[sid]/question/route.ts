@@ -17,7 +17,7 @@ export async function POST(
       headers.set('Authorization', `Bearer ${process.env.BRIDGE_API_KEY}`)
     }
 
-    const upstream = await fetch(`${bridgeUrl}/session/${encodeURIComponent(sid)}/question`, {
+    const upstream = await fetch(new URL(`/session/${encodeURIComponent(sid)}/question`, bridgeUrl).toString(), {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
