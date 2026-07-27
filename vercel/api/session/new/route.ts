@@ -1,9 +1,16 @@
 export const runtime = 'edge'
 
+function json(data: unknown, init?: { status?: number }): Response {
+  return new Response(JSON.stringify(data), {
+    status: init?.status ?? 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 export async function POST(request: Request): Promise<Response> {
   const bridgeUrl = process.env.BRIDGE_URL
   if (!bridgeUrl) {
-    return Response.json({ error: 'BRIDGE_URL is not configured' }, { status: 500 })
+    return json({ error: 'BRIDGE_URL is not configured' }, { status: 500 })
   }
 
   try {
@@ -20,8 +27,8 @@ export async function POST(request: Request): Promise<Response> {
     })
 
     const data = await upstream.json()
-    return Response.json(data, { status: upstream.status })
+    return json(data, { status: upstream.status })
   } catch {
-    return Response.json({ error: 'Bridge is unavailable' }, { status: 502 })
+    return json({ error: 'Bridge is unavailable' }, { status: 502 })
   }
 }
