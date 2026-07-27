@@ -46,6 +46,7 @@ interface UseResearchReturn extends UseResearchState {
   start: (question: string) => Promise<void>;
   cancel: () => Promise<void>;
   reset: () => void;
+  savedQuestion: string | null;
 }
 
 function truncate(text: string, max = 300): string {
@@ -62,18 +63,18 @@ function summarizeFinding(data: {
   return { summary, content };
 }
 
-function loadSession(): { sid: string } | null {
+function loadSession(): { sid: string; question: string } | null {
   try {
     const raw = localStorage.getItem(LS_SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed?.sid) return { sid: parsed.sid };
+    if (parsed?.sid && parsed?.question) return { sid: parsed.sid, question: parsed.question };
   } catch { /* ignore */ }
   return null;
 }
 
-function saveSession(sid: string) {
-  try { localStorage.setItem(LS_SESSION_KEY, JSON.stringify({ sid })); } catch { /* ignore */ }
+function saveSession(sid: string, question: string) {
+  try { localStorage.setItem(LS_SESSION_KEY, JSON.stringify({ sid, question })); } catch { /* ignore */ }
 }
 
 function clearSession() {
@@ -82,7 +83,8 @@ function clearSession() {
 
 export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
-  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedQuestion, setSavedQuestion] = useState<string | null>(null);
+  const pollingRef = useRef<number | null>(null);
   const findingsCountRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
   const seenCountRef = useRef(0);
@@ -91,8 +93,8 @@ export function useResearch(): UseResearchReturn {
 
   const stopPolling = useCallback(() => {
     stoppedRef.current = true;
-    if (pollingRef.current) {
-      clearTimeout(pollingRef.current);
+    if (pollingRef.current !== null) {
+      window.clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
   }, []);
@@ -181,39 +183,48 @@ export function useResearch(): UseResearchReturn {
   );
 
   const setupPolling = useCallback(
-    (sid: string) => {
+    (sid: string, question: string) => {
       stoppedRef.current = false;
       sessionIdRef.current = sid;
-      saveSession(sid);
+      saveSession(sid, question);
 
       let pollCount = 0;
       const base = window.location.origin;
-      const poll = async () => {
+      const poll = () => {
         if (stoppedRef.current) return;
         pollCount++;
-        try {
-          const histResp = await fetch(
-            `${base}/api/session/${encodeURIComponent(sid)}/history`,
-          );
-          if (!histResp.ok || stoppedRef.current) return;
-          const data = (await histResp.json()) as { done: boolean; messages: string[] };
-          const msgCount = data.messages?.length || 0;
-          if (msgCount > seenCountRef.current) {
-            console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
-          }
-          processMessages(data.messages || []);
-          if (data.done || stoppedRef.current) {
-            stopPolling();
-            return;
-          }
-        } catch (e) {
-          console.warn("[poll] error:", e);
-        }
-        if (!stoppedRef.current) {
-          pollingRef.current = setTimeout(poll, POLL_INTERVAL);
-        }
+        fetch(`${base}/api/session/${encodeURIComponent(sid)}/history`)
+          .then((r) => {
+            if (!r.ok || stoppedRef.current) return null;
+            return r.json() as Promise<{ done: boolean; messages: string[] }>;
+          })
+          .then((data) => {
+            if (!data || stoppedRef.current) return;
+            const msgCount = data.messages?.length || 0;
+            if (msgCount > seenCountRef.current) {
+              console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
+            }
+            processMessages(data.messages || []);
+            if (data.done) {
+              stopPolling();
+              setState((s) => {
+                if (s.status !== "complete" && s.status !== "error") return { ...s, status: "complete" };
+                return s;
+              });
+              return;
+            }
+            if (!stoppedRef.current) {
+              pollingRef.current = window.setTimeout(poll, POLL_INTERVAL);
+            }
+          })
+          .catch((e) => {
+            console.warn("[poll] error:", e);
+            if (!stoppedRef.current) {
+              pollingRef.current = window.setTimeout(poll, POLL_INTERVAL);
+            }
+          });
       };
-      pollingRef.current = setTimeout(poll, 0);
+      pollingRef.current = window.setTimeout(poll, 0);
     },
     [stopPolling, processMessages],
   );
@@ -253,7 +264,8 @@ export function useResearch(): UseResearchReturn {
         if (!startResp.ok) throw new Error(`Failed to start research (${startResp.status})`);
 
         setState((s) => ({ ...s, status: "streaming" }));
-        setupPolling(sessionId);
+        setSavedQuestion(trimmed);
+        setupPolling(sessionId, trimmed);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unexpected request failure";
         setState((s) => ({ ...s, status: "error", error: message }));
@@ -285,7 +297,8 @@ export function useResearch(): UseResearchReturn {
           clearSession();
         } else {
           setState((s) => ({ ...s, status: "streaming" }));
-          setupPolling(saved.sid);
+          setSavedQuestion(saved.question);
+          setupPolling(saved.sid, saved.question);
         }
       })
       .catch(() => clearSession());
@@ -294,5 +307,5 @@ export function useResearch(): UseResearchReturn {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  return { ...state, start, cancel, reset };
+  return { ...state, start, cancel, reset, savedQuestion };
 }

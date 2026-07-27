@@ -33,7 +33,12 @@ export default function Home() {
     cancel,
     reset,
     statusMessage,
+    savedQuestion,
   } = research;
+
+  // Restore saved question on reconnect
+  const displayQuestion = question || savedQuestion || "";
+  const showReconnect = !!savedQuestion && status === "streaming" && !question;
 
   const isBusy =
     status === "creating" || status === "starting" || status === "streaming";
@@ -64,7 +69,7 @@ export default function Home() {
         <CardContent className="p-4 sm:p-5">
           <div className="flex flex-col gap-3">
             <Textarea
-              value={question}
+              value={displayQuestion}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t("input.example")}
