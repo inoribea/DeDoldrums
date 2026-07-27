@@ -149,9 +149,18 @@ class ResearchBridge:
             })
             session.add_event("stage_change", {"stage": 4, "description": self._stage_name(4)})
             session.add_event("finding", {"content": brief})
+            # Transform handler findings into displayable format
+            displayable = []
+            for f in getattr(session.handler, "findings", [])[-10:]:
+                if f.get("type") == "reflection":
+                    analysis = (f.get("data", {}).get("analysis", "") or "")[:200]
+                    displayable.append({"content": f"🔍 {f.get('lens', '')}: {analysis}", "summary": f.get('lens', '')})
+                elif f.get("type") == "exploration":
+                    q = f.get("data", {}).get("query", "")[:100]
+                    displayable.append({"content": f"📖 Search: {q}", "summary": q})
             session.add_event("complete", {
                 "brief": brief,
-                "findings": getattr(session.handler, "findings", [])[-5:],
+                "findings": displayable,
                 "confidence": getattr(session.handler, "confidence_scores", {}),
             })
             session.memory.archive_session(session.question, [{"final_brief": brief}])
