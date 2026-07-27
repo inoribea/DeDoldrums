@@ -1,0 +1,16 @@
+[Unit]
+Description=ResearchAgent Bridge Server
+After=network.target
+
+[Service]
+Type=simple
+User=research
+Group=research
+WorkingDirectory=/opt/research-agent
+EnvironmentFile=/opt/research-agent/.env
+ExecStart=/opt/research-agent/.venv/bin/python bridge.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

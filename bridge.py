@@ -1,8 +1,15 @@
-"""aiohttp HTTP + SSE bridge for ResearchAgent platform adapters."""
+"""aiohttp HTTP + SSE bridge for ResearchAgent platform adapters.
+
+Serves both the REST/SSE API and the built-in web frontend locally,
+so ``python bridge.py`` gives you a complete research station at
+http://127.0.0.1:14168 without any external deployment.
+"""
 
 import asyncio
 import json
+import mimetypes
 import os
+import pathlib
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +29,9 @@ except ImportError:  # pragma: no cover - direct script execution path.
     from llm import LLMClient
     from memory import MemoryStore
     from tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
+
+# Path to the built-in web frontend shipped alongside bridge.py.
+_FRONTEND_DIR = pathlib.Path(__file__).resolve().parent / "adapters" / "vercel"
 
 
 def _new_llm_client() -> LLMClient:
@@ -197,6 +207,44 @@ class ResearchBridge:
         return names.get(stage, f"Stage {stage}")
 
 
+def _build_frontend_routes(bridge: ResearchBridge) -> list[web.RouteDef]:
+    """Return routes for the built-in web frontend and its /api aliases."""
+    routes: list[web.RouteDef] = []
+
+    # --- Static frontend files (served only when the directory exists) ---
+    if _FRONTEND_DIR.is_dir():
+        for fpath in _FRONTEND_DIR.rglob("*"):
+            if not fpath.is_file() or fpath.name.startswith("."):
+                continue
+            rel = "/" + str(fpath.relative_to(_FRONTEND_DIR)).replace("\\", "/")
+            content = fpath.read_bytes()
+            content_type, _ = mimetypes.guess_type(str(fpath))
+            routes.append(
+                web.route("GET", rel, lambda req, c=content, ct=content_type: web.Response(
+                    body=c, content_type=ct or "application/octet-stream",
+                ))
+            )
+        # Root → index.html
+        index = _FRONTEND_DIR / "index.html"
+        if index.is_file():
+            index_bytes = index.read_bytes()
+            routes.append(
+                web.route("GET", "/", lambda req, b=index_bytes: web.Response(
+                    body=b, content_type="text/html; charset=utf-8",
+                ))
+            )
+
+    # --- /api aliases so the same frontend works with or without Vercel ---
+    routes.append(web.route("POST", "/api/session/new", bridge.handle_session_new))
+    routes.append(web.route("POST", "/api/session/{sid}/question", bridge.handle_session_question))
+    routes.append(web.route("GET", "/api/research/stream", bridge.handle_session_stream))
+    routes.append(web.route("GET", "/api/session/{sid}/history", bridge.handle_session_history))
+    routes.append(web.route("POST", "/api/session/{sid}/cancel", bridge.handle_session_cancel))
+    routes.append(web.route("GET", "/api/sessions", bridge.handle_list_sessions))
+
+    return routes
+
+
 def create_app() -> web.Application:
     api_key = os.environ.get("BRIDGE_API_KEY")
 
@@ -209,12 +257,18 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[require_api_key])
     bridge = ResearchBridge()
     app["bridge"] = bridge
+
+    # Primary API endpoints.
     app.router.add_post("/session/new", bridge.handle_session_new)
     app.router.add_post("/session/{sid}/question", bridge.handle_session_question)
     app.router.add_get("/session/{sid}/stream", bridge.handle_session_stream)
     app.router.add_get("/session/{sid}/history", bridge.handle_session_history)
     app.router.add_post("/session/{sid}/cancel", bridge.handle_session_cancel)
     app.router.add_get("/sessions", bridge.handle_list_sessions)
+
+    # Built-in web frontend + /api aliases.
+    app.add_routes(_build_frontend_routes(bridge))
+
     return app
 
 

@@ -58,35 +58,90 @@ Stage 4   — Peer Review               (confidence scores, bias check, missing 
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Local Deployment
+
+### Option A: Bare Metal (Python venv)
 
 ```bash
 git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
-pip install -r requirements.txt          # 4 dependencies total
-cp .env.example .env                     # fill in OPENAI_API_KEY
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt                      # 4 dependencies total
+cp .env.example .env                                 # fill in OPENAI_API_KEY
+```
 
-# Single research session
+**CLI mode** — single research session:
+
+```bash
 python main.py "What is the real timeline for quantum computing to break RSA?"
-
-# Goal Mode — 30 minutes of continuous deep-dive
 python main.py --goal --budget 30 "Comparing feasible AGI governance frameworks"
 ```
 
-### Bridge Mode (multi-platform)
+**Web UI mode** — full research station with built-in frontend:
 
 ```bash
-python bridge.py                         # http://127.0.0.1:14168
-python adapters/telegram_bot.py          # optional
-python adapters/discord_bot.py           # optional
+python bridge.py                     # → http://127.0.0.1:14168
 ```
 
-### Vercel Frontend
+Open your browser. Type a question. Watch the 5.5-stage pipeline in real time. No Vercel, no external services — the bridge serves the web frontend directly.
+
+**With bots** (optional):
+
+```bash
+export TELEGRAM_BOT_TOKEN="..."      # optional
+export DISCORD_BOT_TOKEN="..."       # optional
+python launch.py                      # starts bridge + all configured bots
+```
+
+### Option B: Docker (recommended for servers)
+
+```bash
+git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+cp .env.example .env                 # fill in OPENAI_API_KEY
+docker compose up -d                 # → http://localhost:14168
+```
+
+The `docker-compose.yml` mounts `./memory/` as a volume — your agent's knowledge persists across restarts.
+
+### Option C: systemd (Linux servers)
+
+```bash
+sudo cp systemd/research-agent.service /etc/systemd/system/
+sudo useradd -r -s /bin/false research
+sudo mkdir -p /opt/research-agent
+sudo cp -r . /opt/research-agent/
+sudo cp .env /opt/research-agent/
+cd /opt/research-agent && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+sudo systemctl daemon-reload
+sudo systemctl enable --now research-agent    # → http://your-server:14168
+```
+
+### LLM Provider Configuration
+
+Edit `.env` — any OpenAI-compatible provider works:
+
+```bash
+# OpenAI
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Azure OpenAI
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT
+
+# Local (ollama / vllm / LM Studio)
+OPENAI_API_KEY=not-needed
+OPENAI_BASE_URL=http://localhost:11434/v1    # ollama default
+```
+
+### Vercel Frontend (public access, no server needed)
 
 ```bash
 cd adapters/vercel && npm install
 # Set BRIDGE_URL + BRIDGE_API_KEY in Vercel dashboard
 npx vercel deploy --prod
 ```
+
+The Vercel Edge Functions proxy SSE to your bridge — users access the web UI without touching your server directly.
 
 ---
 
@@ -205,35 +260,90 @@ Stage 4   — 同行评审        （置信度评分 + 偏见检测 + 缺失视�
 
 ---
 
-## 🚀 快速开始
+## 🚀 本地部署
+
+### 方案 A：裸机（Python venv）
 
 ```bash
 git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
-pip install -r requirements.txt          # 总共 4 个依赖
-cp .env.example .env                     # 填入 OPENAI_API_KEY
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt                      # 总共 4 个依赖
+cp .env.example .env                                 # 填入 OPENAI_API_KEY
+```
 
-# 单次研究
+**CLI 模式** — 单次研究会话：
+
+```bash
 python main.py "量子计算对 RSA 的真实威胁时间线是什么？"
-
-# Goal Mode — 30 分钟持续深挖
 python main.py --goal --budget 30 "比较可行的 AGI 治理框架"
 ```
 
-### Bridge 模式（多平台接入）
+**Web UI 模式** — 内置前端，完整研究站：
 
 ```bash
-python bridge.py                         # 监听 http://127.0.0.1:14168
-python adapters/telegram_bot.py          # 可选
-python adapters/discord_bot.py           # 可选
+python bridge.py                     # → http://127.0.0.1:14168
 ```
 
-### Vercel 前端部署
+浏览器打开即可使用。输入问题，实时观看 5.5 阶段管线推进。无需 Vercel，无需外部服务——bridge 直接提供前端页面。
+
+**带机器人**（可选）：
+
+```bash
+export TELEGRAM_BOT_TOKEN="..."      # 可选
+export DISCORD_BOT_TOKEN="..."       # 可选
+python launch.py                      # 启动 bridge + 所有已配置的 bot
+```
+
+### 方案 B：Docker（推荐服务器部署）
+
+```bash
+git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+cp .env.example .env                 # 填入 OPENAI_API_KEY
+docker compose up -d                 # → http://localhost:14168
+```
+
+`docker-compose.yml` 将 `./memory/` 挂载为卷——Agent 的知识在重启后持续保留。
+
+### 方案 C：systemd（Linux 服务器）
+
+```bash
+sudo cp systemd/research-agent.service /etc/systemd/system/
+sudo useradd -r -s /bin/false research
+sudo mkdir -p /opt/research-agent
+sudo cp -r . /opt/research-agent/
+sudo cp .env /opt/research-agent/
+cd /opt/research-agent && python -m venv .venv && .venv/bin/pip install -r requirements.txt
+sudo systemctl daemon-reload
+sudo systemctl enable --now research-agent    # → http://your-server:14168
+```
+
+### LLM 提供商配置
+
+编辑 `.env`——任何兼容 OpenAI 接口的提供商均可使用：
+
+```bash
+# OpenAI
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://api.openai.com/v1
+
+# Azure OpenAI
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT
+
+# 本地模型（ollama / vllm / LM Studio）
+OPENAI_API_KEY=not-needed
+OPENAI_BASE_URL=http://localhost:11434/v1    # ollama 默认
+```
+
+### Vercel 前端部署（公网访问，无需自有服务器）
 
 ```bash
 cd adapters/vercel && npm install
 # 在 Vercel 控制台设置 BRIDGE_URL + BRIDGE_API_KEY
 npx vercel deploy --prod
 ```
+
+Vercel Edge Function 将 SSE 代理到你的 bridge——用户无需直连你的服务器即可使用 Web UI。
 
 ---
 

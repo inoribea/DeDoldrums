@@ -1,0 +1,14 @@
+services:
+  bridge:
+    build: .
+    container_name: research-agent
+    restart: unless-stopped
+    ports:
+      - "14168:14168"
+    env_file:
+      - .env
+    volumes:
+      - ./memory:/app/memory
+    environment:
+      - BRIDGE_HOST=0.0.0.0
+      - BRIDGE_PORT=14168
