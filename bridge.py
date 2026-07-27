@@ -13,6 +13,7 @@ import os
 import pathlib
 import sys
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -254,6 +255,15 @@ def _build_frontend_routes(bridge: ResearchBridge) -> list[web.RouteDef]:
 
 def create_app() -> web.Application:
     api_key = os.environ.get("BRIDGE_API_KEY")
+    logger = logging.getLogger("bridge")
+
+    @web.middleware
+    async def log_requests(request: web.Request, handler: Any) -> web.StreamResponse:
+        start = time.monotonic()
+        response = await handler(request)
+        elapsed = (time.monotonic() - start) * 1000
+        logger.info("%s %s → %s (%.0fms)", request.method, request.path, response.status, elapsed)
+        return response
 
     @web.middleware
     async def require_api_key(request: web.Request, handler: Any) -> web.StreamResponse:
@@ -261,7 +271,7 @@ def create_app() -> web.Application:
             return web.json_response({"error": "unauthorized"}, status=401)
         return await handler(request)
 
-    app = web.Application(middlewares=[require_api_key])
+    app = web.Application(middlewares=[log_requests, require_api_key])
     bridge = ResearchBridge()
     app["bridge"] = bridge
 

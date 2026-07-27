@@ -4,11 +4,11 @@ services:
     container_name: research-agent
     restart: unless-stopped
     ports:
-      - "14168:14168"
+      - "18765:18765"
     env_file:
       - .env
     volumes:
       - ./memory:/app/memory
     environment:
       - BRIDGE_HOST=0.0.0.0
-      - BRIDGE_PORT=14168
+      - BRIDGE_PORT=18765
