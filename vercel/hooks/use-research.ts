@@ -23,6 +23,7 @@ interface UseResearchState {
   finalFindings: FinalFinding[] | null;
   confidence: ResearchComplete["confidence"] | null;
   error: string | null;
+  statusMessage: string | null;
 }
 
 const INITIAL_STATE: UseResearchState = {
@@ -35,6 +36,7 @@ const INITIAL_STATE: UseResearchState = {
   finalFindings: null,
   confidence: null,
   error: null,
+  statusMessage: null,
 };
 
 interface UseResearchReturn extends UseResearchState {
@@ -159,6 +161,13 @@ export function useResearch(): UseResearchReturn {
           } catch {
             /* ignore malformed payloads */
           }
+        });
+
+        es.addEventListener("status", (e: MessageEvent) => {
+          try {
+            const { message } = JSON.parse(e.data) as { message: string };
+            if (message) setState((s) => ({ ...s, statusMessage: message }));
+          } catch { /* ignore */ }
         });
 
         es.addEventListener("finding", (e: MessageEvent) => {

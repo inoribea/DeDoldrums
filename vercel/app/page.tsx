@@ -32,6 +32,7 @@ export default function Home() {
     start,
     cancel,
     reset,
+    statusMessage,
   } = research;
 
   const isBusy =
@@ -161,6 +162,7 @@ export default function Home() {
           status={status}
           findings={findings}
           challenge={challenge}
+          statusMessage={statusMessage}
         />
       )}
 

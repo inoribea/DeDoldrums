@@ -15,9 +15,10 @@ interface LiveOutputProps {
   status: ResearchStatus;
   findings: LiveFinding[];
   challenge: ChallengeResult | null;
+  statusMessage: string | null;
 }
 
-export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
+export function LiveOutput({ status, findings, challenge, statusMessage }: LiveOutputProps) {
   const { t } = useLanguage();
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +39,11 @@ export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
           {t("live.title")}
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+          )}
+          {statusMessage && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground truncate">
+              {statusMessage}
+            </span>
           )}
         </CardTitle>
       </CardHeader>

@@ -41,10 +41,11 @@ class StepOutcome:
 class ResearchHandler:
     """Route tools and advance the distinct stages of the STORM pipeline."""
 
-    def __init__(self, question: str, memory: MemoryStore, llm_client: Any) -> None:
+    def __init__(self, question: str, memory: MemoryStore, llm_client: Any, on_status: Any = None) -> None:
         self.question = question
         self.memory = memory
         self.llm = llm_client
+        self.on_status = on_status
         self.stage: int | float = -1
         self.findings: list[dict[str, Any]] = []
         self.lenses_used: set[str] = set()
@@ -66,18 +67,31 @@ class ResearchHandler:
         return await method(args, response)
 
     async def do_explore(self, args: dict[str, Any], response: Any) -> StepOutcome:
+        source = args.get("source", "web")
+        query = str(args.get("query", ""))[:80]
+        if self.on_status:
+            if source == "web":
+                self.on_status(f"Searching web: {query}…")
+            elif source == "url":
+                self.on_status(f"Reading: {args.get('url', '')[:60]}…")
+            elif source == "memory":
+                self.on_status(f"Searching memory: {query}…")
         result = await do_explore(args, response)
         self.findings.append({"type": "exploration", "data": result})
         return StepOutcome(result)
 
     async def do_reflect(self, args: dict[str, Any], response: Any) -> StepOutcome:
         lens = str(args["lens"])
+        if self.on_status:
+            self.on_status(f"Analyzing with {lens} lens…")
         self.lenses_used.add(lens)
         result = await do_reflect(args, self.llm)
         self.findings.append({"type": "reflection", "lens": lens, "data": result})
         return StepOutcome(result)
 
     async def do_challenge(self, args: dict[str, Any], response: Any) -> StepOutcome:
+        if self.on_status:
+            self.on_status(f"Challenge: {args.get('mode', 'all')}")
         result = await do_challenge(args, self.llm)
         if self.stage == 3.5:
             target = str(args.get("target", len(self.adversarial_results)))
@@ -86,12 +100,16 @@ class ResearchHandler:
         return StepOutcome(result)
 
     async def do_crystallize(self, args: dict[str, Any], response: Any) -> StepOutcome:
+        if self.on_status:
+            self.on_status(f"Crystallizing: {str(args.get('category', ''))}…")
         result = await do_crystallize(args, response)
         return StepOutcome(result)
 
     async def get_stage_prompt(self) -> Optional[str]:
         """Return the next stage instruction, advancing only at its defined gate."""
         if self.stage == -1:
+            if self.on_status:
+                self.on_status("Stage 0: Discovering perspectives…")
             self.dynamic_lenses = await discover_lenses(self.question, self.llm)
             self.stage = 0
             return f"""[研究阶段 0/4: 动态视角发现]
@@ -114,6 +132,8 @@ class ResearchHandler:
         if self.stage == 0:
             if len(self.dynamic_lenses) >= 3:
                 self.stage = 1
+                if self.on_status:
+                    self.on_status("Stage 1: Multi-perspective scan…")
                 return STAGE1_MULTI_PERSPECTIVE.format(
                     question=self.question,
                     lenses=self.dynamic_lenses,
@@ -123,15 +143,21 @@ class ResearchHandler:
         if self.stage == 1:
             if len(self.lenses_used) >= 3:
                 self.stage = 2
+                if self.on_status:
+                    self.on_status("Stage 2: Mapping contradictions…")
                 return STAGE2_CONTRADICTION_MAP
             return None
 
         if self.stage == 2:
             self.stage = 3
+            if self.on_status:
+                self.on_status("Stage 3: Synthesizing findings…")
             return STAGE3_SYNTHESIS
 
         if self.stage == 3:
             self.stage = 3.5
+            if self.on_status:
+                self.on_status("Stage 3.5: Adversarial verification gate…")
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
@@ -142,6 +168,8 @@ class ResearchHandler:
             ]
             if not pending:
                 self.stage = 4
+                if self.on_status:
+                    self.on_status("Stage 4: Peer review…")
                 return STAGE4_PEER_REVIEW
             return None
 

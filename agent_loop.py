@@ -59,15 +59,24 @@ async def research_loop(
     llm_client: Any,
     question: str,
     max_turns: int = 25,
+    on_status: Any = None,
 ) -> str:
     """Run the full -1 → 4 research pipeline and return its final brief.
 
     Step 0 (conversational): refine the user's raw question into a
     well-scoped research question before entering the STORM pipeline.
+
+    If *on_status* is provided, it is called as ``on_status(message)``
+    at each significant step so the bridge can relay live status to the UI.
     """
+    def _status(msg: str) -> None:
+        if on_status:
+            on_status(msg)
+
     memory = MemoryStore("memory/")
 
     # ── Step 0: conversational layer — refine the research question ──
+    _status("Refining research question…")
     refine_prompt = REFINE_QUESTION_PROMPT.format(question=question)
     refine_response = await llm_client.chat(
         messages=[{"role": "user", "content": refine_prompt}],
@@ -78,7 +87,8 @@ async def research_loop(
         refined_question = question
 
     # ── Research pipeline ──
-    handler = ResearchHandler(question, memory, llm_client)
+    handler = ResearchHandler(question, memory, llm_client, on_status=on_status)
+    _status("Starting multi-perspective research pipeline…")
     relevant_memories = memory.search(
         refined_question,
         layers=["L2_domain", "L3_thinking_sops"],
@@ -101,6 +111,7 @@ async def research_loop(
         response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
         if not response.tool_calls:
             if handler.stage >= 4:
+                _status("Composing final report…")
                 final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
                 return final_response.content
             continue
@@ -141,6 +152,7 @@ async def research_loop(
             )
 
         if handler.stage >= 4 and handler.findings and turn > 5:
+            _status("Generating final research brief…")
             messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
             final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
             return final_response.content
