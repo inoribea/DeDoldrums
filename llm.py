@@ -13,8 +13,9 @@ import httpx  # pyright: ignore[reportMissingImports]
 PROVIDER_REGISTRY = {
     "openai": {"backend": "response", "default_base": "https://api.openai.com/v1"},
     "anthropic": {"backend": "messages", "default_base": "https://api.anthropic.com/v1"},
-    "deepseek": {"backend": "response", "default_base": "https://api.deepseek.com/v1"},
-    "zhipu": {"backend": "response", "default_base": "https://open.bigmodel.cn/api/paas/v4"},
+    "deepseek": {"backend": "chat", "default_base": "https://api.deepseek.com"},
+    "zhipu": {"backend": "chat", "default_base": "https://open.bigmodel.cn/api/paas/v4"},
+    "kimi": {"backend": "chat", "default_base": "https://api.moonshot.cn/v1"},
     "openai-completion": {
         "backend": "completions",
         "default_base": "https://api.openai.com/v1",
@@ -91,6 +92,32 @@ def _tool_arguments(arguments: Any) -> str:
     return arguments if isinstance(arguments, str) else json.dumps(arguments or {})
 
 
+def _normalize_messages(messages: Sequence[Mapping[str, Any]] | str) -> list[dict[str, Any]]:
+    """Convert a plain string or sequence of mappings into a message list."""
+    if isinstance(messages, str):
+        return [{"role": "user", "content": messages}]
+    return [dict(m) if isinstance(m, Mapping) else {"role": "user", "content": str(m)} for m in messages]
+
+
+def _parse_chat_response(data: Mapping[str, Any] | None) -> ChatResponse:
+    """Parse a standard ``/chat/completions`` response."""
+    if not data:
+        return ChatResponse(error="Empty API response")
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ChatResponse(error="No choices in response")
+    choice = choices[0]
+    if not isinstance(choice, Mapping):
+        return ChatResponse(error="Invalid choice format")
+    message = choice.get("message")
+    if not isinstance(message, Mapping):
+        return ChatResponse(error="No message in choice")
+    return ChatResponse(
+        content=_content_to_text(message.get("content")),
+        tool_calls=_parse_tool_calls(message),
+    )
+
+
 class BaseBackend:
     """Shared raw-http backend plumbing."""
 
@@ -126,6 +153,36 @@ class BaseBackend:
         temperature: float = 0.7,
     ) -> ChatResponse:
         raise NotImplementedError
+
+
+class ChatBackend(BaseBackend):
+    """Standard OpenAI-compatible ``/chat/completions`` backend.
+
+    Used by DeepSeek, Kimi, Zhipu, and most third-party providers.
+    """
+
+    async def chat(
+        self,
+        messages: Sequence[Mapping[str, Any]] | str,
+        tools: Sequence[Mapping[str, Any]] | None = None,
+        temperature: float = 0.7,
+    ) -> ChatResponse:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": _normalize_messages(messages),
+            "temperature": temperature,
+        }
+        if tools:
+            payload["tools"] = list(tools)
+
+        data, error = await self._post(
+            "/chat/completions",
+            payload,
+            {"Authorization": f"Bearer {self.api_key or ''}"},
+        )
+        if error:
+            return ChatResponse(error=error)
+        return _parse_chat_response(data)
 
 
 class ResponseBackend(BaseBackend):
@@ -343,6 +400,7 @@ class V1BetaBackend(BaseBackend):
 
 
 _BACKEND_TYPES: dict[str, type[BaseBackend]] = {
+    "chat": ChatBackend,
     "response": ResponseBackend,
     "messages": MessagesBackend,
     "completions": CompletionsBackend,
