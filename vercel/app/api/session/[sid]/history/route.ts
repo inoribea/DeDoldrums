@@ -11,7 +11,7 @@ function getBridgeUrl(): string | null {
   return raw.trim().replace(/\/+$/, '')
 }
 
-export async function GET(
+export async function POST(
   _request: Request,
   { params }: { params: { sid: string } },
 ): Promise<Response> {
