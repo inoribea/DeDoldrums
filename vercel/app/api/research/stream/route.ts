@@ -7,9 +7,15 @@ function json(data: unknown, init?: { status?: number }): Response {
   })
 }
 
+function getBridgeUrl(): string | null {
+  const raw = process.env.BRIDGE_URL
+  if (!raw) return null
+  return raw.trim().replace(/\/+$/, '')
+}
+
 export async function GET(request: Request): Promise<Response> {
   const sid = new URL(request.url).searchParams.get('sid')
-  const bridgeUrl = process.env.BRIDGE_URL
+  const bridgeUrl = getBridgeUrl()
 
   if (!sid) {
     return json({ error: 'sid query parameter is required' }, { status: 400 })
@@ -25,14 +31,14 @@ export async function GET(request: Request): Promise<Response> {
     'X-Accel-Buffering': 'no',
   }
 
-  const bridge = new URL(`/session/${encodeURIComponent(sid)}/stream`, bridgeUrl)
+  const url = `${bridgeUrl}/session/${encodeURIComponent(sid)}/stream`
   const headers = new Headers()
   if (process.env.BRIDGE_API_KEY) {
     headers.set('Authorization', `Bearer ${process.env.BRIDGE_API_KEY}`)
   }
 
   try {
-    const upstream = await fetch(bridge.toString(), { headers, signal: request.signal })
+    const upstream = await fetch(url, { headers, signal: request.signal })
     if (!upstream.ok || !upstream.body) {
       return json(
         { error: `Bridge SSE request failed (${upstream.status})` },
@@ -40,7 +46,7 @@ export async function GET(request: Request): Promise<Response> {
       )
     }
     return new Response(upstream.body, { headers: sseHeaders })
-  } catch {
-    return json({ error: 'Bridge is unavailable' }, { status: 502 })
+  } catch (e) {
+    return json({ error: `Bridge unreachable: ${e instanceof Error ? e.message : String(e)}` }, { status: 502 })
   }
 }
