@@ -136,7 +136,7 @@ OPENAI_BASE_URL=http://localhost:11434/v1    # ollama default
 ### Vercel Frontend (public access, no server needed)
 
 ```bash
-cd adapters/vercel && npm install
+cd vercel && npm install
 # Set BRIDGE_URL + BRIDGE_API_KEY in Vercel dashboard
 npx vercel deploy --prod
 ```
@@ -338,7 +338,7 @@ OPENAI_BASE_URL=http://localhost:11434/v1    # ollama 默认
 ### Vercel 前端部署（公网访问，无需自有服务器）
 
 ```bash
-cd adapters/vercel && npm install
+cd vercel && npm install
 # 在 Vercel 控制台设置 BRIDGE_URL + BRIDGE_API_KEY
 npx vercel deploy --prod
 ```

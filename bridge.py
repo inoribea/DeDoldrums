@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - direct script execution path.
     from tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
 
 # Path to the built-in web frontend shipped alongside bridge.py.
-_FRONTEND_DIR = pathlib.Path(__file__).resolve().parent / "adapters" / "vercel"
+_FRONTEND_DIR = pathlib.Path(__file__).resolve().parent / "vercel"
 
 
 def _new_llm_client() -> LLMClient:
