@@ -32,8 +32,9 @@ export default function Home() {
     start,
     cancel,
     reset,
-    statusMessage,
+    statusLog,
     savedQuestion,
+    latestStatus,
   } = research;
 
   // Restore saved question on reconnect
@@ -166,7 +167,8 @@ export default function Home() {
           status={status}
           findings={findings}
           challenge={challenge}
-          statusMessage={statusMessage}
+          statusLog={statusLog}
+          latestStatus={latestStatus}
         />
       )}
 

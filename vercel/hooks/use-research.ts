@@ -26,7 +26,7 @@ interface UseResearchState {
   finalFindings: FinalFinding[] | null;
   confidence: ResearchComplete["confidence"] | null;
   error: string | null;
-  statusMessage: string | null;
+  statusLog: string[];
 }
 
 const INITIAL_STATE: UseResearchState = {
@@ -39,7 +39,7 @@ const INITIAL_STATE: UseResearchState = {
   finalFindings: null,
   confidence: null,
   error: null,
-  statusMessage: null,
+  statusLog: [],
 };
 
 interface UseResearchReturn extends UseResearchState {
@@ -47,6 +47,7 @@ interface UseResearchReturn extends UseResearchState {
   cancel: () => Promise<void>;
   reset: () => void;
   savedQuestion: string | null;
+  latestStatus: string | null;
 }
 
 function truncate(text: string, max = 300): string {
@@ -137,7 +138,7 @@ export function useResearch(): UseResearchReturn {
             }));
           } else if (event.type === "status") {
             const message = event.message as string | undefined;
-            if (message) setState((s) => ({ ...s, statusMessage: message }));
+            if (message) setState((s) => ({ ...s, statusLog: [...s.statusLog, message] }));
           } else if (event.type === "finding") {
             findingsCountRef.current++;
             const { summary, content } = summarizeFinding(event as { summary?: string; content?: string });
@@ -165,7 +166,7 @@ export function useResearch(): UseResearchReturn {
               finalFindings: (event.findings as FinalFinding[]) || [],
               confidence: event.confidence as ResearchComplete["confidence"] || null,
               currentStage: "4",
-              statusMessage: null,
+              statusLog: [],
             }));
           } else if (event.type === "error") {
             clearSession();
@@ -304,5 +305,7 @@ export function useResearch(): UseResearchReturn {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  return { ...state, start, cancel, reset, savedQuestion };
+  const latestStatus = state.statusLog.length > 0 ? state.statusLog[state.statusLog.length - 1] : null;
+
+  return { ...state, start, cancel, reset, savedQuestion, latestStatus };
 }

@@ -58,6 +58,7 @@ export interface Translations {
   // Live output
   "live.title": string;
   "live.waiting": string;
+"live.thinking": string;
   "live.idle": string;
   "live.adversarialGate": string;
 
@@ -117,9 +118,10 @@ const en: Translations = {
   "stage.4.label": "Peer Review",
   "stage.4.description": "Confidence scores, bias check, missing angles",
 
-  "live.title": "Live output",
-  "live.waiting": "Waiting for the first finding…",
-  "live.idle": "Findings will appear here as the agent researches.",
+"live.title": "Live output",
+"live.waiting": "Waiting for the first finding…",
+"live.thinking": "Thinking",
+"live.idle": "Findings will appear here as the agent researches.",
   "live.adversarialGate": "Adversarial gate",
 
   "results.title": "Research brief",
@@ -172,9 +174,10 @@ const zh: Translations = {
   "stage.4.label": "同行评审",
   "stage.4.description": "置信度评分、偏差检查、遗漏角度",
 
-  "live.title": "实时输出",
-  "live.waiting": "等待第一条发现…",
-  "live.idle": "发现将在此处显示，随研究进行实时更新。",
+"live.title": "实时输出",
+"live.waiting": "等待第一条发现…",
+"live.thinking": "思考中",
+"live.idle": "发现将在此处显示，随研究进行实时更新。",
   "live.adversarialGate": "对抗验证闸门",
 
   "results.title": "研究简报",
