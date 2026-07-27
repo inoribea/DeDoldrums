@@ -2,7 +2,7 @@
 
 Serves both the REST/SSE API and the built-in web frontend locally,
 so ``python bridge.py`` gives you a complete research station at
-http://127.0.0.1:14168 without any external deployment.
+http://127.0.0.1:18765 without any external deployment.
 """
 
 import asyncio
@@ -281,7 +281,7 @@ def create_app() -> web.Application:
 
 def main(handle_signals: bool = True) -> None:
     host = os.environ.get("BRIDGE_HOST", "127.0.0.1")
-    port = int(os.environ.get("BRIDGE_PORT", "14168"))
+    port = int(os.environ.get("BRIDGE_PORT", "18765"))
     logger = logging.getLogger("bridge")
     logger.info("Starting ResearchAgent bridge on http://%s:%d", host, port)
     if not os.environ.get("OPENAI_API_KEY"):

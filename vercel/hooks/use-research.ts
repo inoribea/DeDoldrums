@@ -11,6 +11,7 @@ import type {
   StageId,
 } from "@/lib/types";
 import { normalizeStage, STAGES } from "@/lib/stages";
+import { useLanguage } from "@/lib/i18n";
 
 interface UseResearchState {
   status: ResearchStatus;
@@ -59,6 +60,7 @@ export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
   const eventSourceRef = useRef<EventSource | null>(null);
   const findingsCountRef = useRef(0);
+  const { t } = useLanguage();
 
   const closeStream = useCallback(() => {
     const es = eventSourceRef.current;
@@ -85,7 +87,7 @@ export function useResearch(): UseResearchReturn {
         ...INITIAL_STATE,
         status: "creating",
         currentStage: "-1",
-        stageDescription: STAGES["-1"].description,
+        stageDescription: t(STAGES["-1"].descriptionKey),
       });
 
       try {
@@ -136,7 +138,7 @@ export function useResearch(): UseResearchReturn {
               currentStage: id ?? s.currentStage,
               stageDescription:
                 description ??
-                (id ? STAGES[id].description : s.stageDescription),
+                (id ? t(STAGES[id].descriptionKey) : s.stageDescription),
             }));
           } catch {
             /* ignore malformed payloads */
@@ -231,7 +233,7 @@ export function useResearch(): UseResearchReturn {
         closeStream();
       }
     },
-    [closeStream],
+    [closeStream, t],
   );
 
   useEffect(() => () => closeStream(), [closeStream]);

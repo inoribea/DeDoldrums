@@ -5,12 +5,14 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { LiveFinding } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
 
 interface FindingItemProps {
   finding: LiveFinding;
 }
 
 export function FindingItem({ finding }: FindingItemProps) {
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const hasFull = finding.content !== null && finding.content !== finding.summary;
   const display = expanded && finding.content ? finding.content : finding.summary;
@@ -39,7 +41,7 @@ export function FindingItem({ finding }: FindingItemProps) {
             "transition-colors hover:text-primary/80",
           )}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? t("finding.showLess") : t("finding.showMore")}
         </button>
       )}
     </div>

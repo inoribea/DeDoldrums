@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { FindingItem } from "@/components/finding-item";
 import type { ChallengeResult, LiveFinding, ResearchStatus } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
 
 interface LiveOutputProps {
   status: ResearchStatus;
@@ -17,6 +18,7 @@ interface LiveOutputProps {
 }
 
 export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
+  const { t } = useLanguage();
   const viewportRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to latest finding.
@@ -33,7 +35,7 @@ export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
     <Card className="flex h-[360px] flex-col">
       <CardHeader className="shrink-0 pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
-          Live output
+          {t("live.title")}
           {isStreaming && (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
           )}
@@ -46,8 +48,8 @@ export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
             {isEmpty && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {isStreaming
-                  ? "Waiting for the first finding…"
-                  : "Findings will appear here as the agent researches."}
+                  ? t("live.waiting")
+                  : t("live.idle")}
               </p>
             )}
             {findings.map((f) => (
@@ -63,7 +65,7 @@ export function LiveOutput({ status, findings, challenge }: LiveOutputProps) {
                     <ShieldAlert className="h-4 w-4 text-warning" />
                   )}
                   <span className="text-sm font-medium">
-                    Adversarial gate
+                    {t("live.adversarialGate")}
                   </span>
                   <Badge
                     variant={

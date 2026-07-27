@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STAGE_ORDER, STAGES, stageIndex } from "@/lib/stages";
 import type { StageId } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
 
 interface StageStepperProps {
   currentStage: StageId | null;
@@ -12,6 +13,7 @@ interface StageStepperProps {
 }
 
 export function StageStepper({ currentStage, isComplete }: StageStepperProps) {
+  const { t } = useLanguage();
   const currentIdx = currentStage ? stageIndex(currentStage) : -1;
 
   return (
@@ -72,15 +74,15 @@ export function StageStepper({ currentStage, isComplete }: StageStepperProps) {
                   isPending && "text-muted-foreground",
                 )}
               >
-                {meta.label}
+                {t(meta.labelKey)}
                 {id === "3.5" && (
                   <span className="ml-1.5 text-[10px] uppercase tracking-wider text-warning">
-                    gate
+                    {t("stage.3.5.gate")}
                   </span>
                 )}
               </span>
               <span className="mt-0.5 text-xs text-muted-foreground">
-                {meta.description}
+                {t(meta.descriptionKey)}
               </span>
             </div>
           </li>

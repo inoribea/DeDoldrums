@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { FinalFinding, ResearchComplete } from "@/lib/types";
+import { useLanguage } from "@/lib/i18n";
 
 interface FinalResultsProps {
   brief: string | null;
@@ -37,6 +38,7 @@ export function FinalResults({
   finalFindings,
   confidence,
 }: FinalResultsProps) {
+  const { t } = useLanguage();
   if (!brief && (!finalFindings || finalFindings.length === 0)) return null;
 
   const overall = numericConfidence(confidence);
@@ -45,13 +47,13 @@ export function FinalResults({
     <Card className="animate-fade-in-up">
       <CardHeader className="pb-3">
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          Research brief
+          {t("results.title")}
           {overall !== null && (
             <Badge
               variant={confidenceVariant(overall)}
               className="ml-1 font-mono"
             >
-              confidence {overall}/10
+              {t("results.confidence")} {overall}/10
             </Badge>
           )}
         </CardTitle>
@@ -59,7 +61,7 @@ export function FinalResults({
       <Separator />
       <CardContent className="space-y-5 pt-5">
         {brief && (
-          <div className="prose prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:leading-relaxed prose-p:text-foreground/90 prose-strong:text-foreground prose-code:rounded prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-mono prose-code:text-primary prose-pre:bg-secondary prose-pre:text-foreground/90 prose-a:text-primary prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground">
+          <div className="prose dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:leading-relaxed prose-p:text-foreground/90 prose-strong:text-foreground prose-code:rounded prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-mono prose-code:text-primary prose-pre:bg-secondary prose-pre:text-foreground/90 prose-a:text-primary prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {brief}
             </ReactMarkdown>
@@ -69,7 +71,7 @@ export function FinalResults({
         {finalFindings && finalFindings.length > 0 && (
           <div className="space-y-2.5">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Key findings
+              {t("results.keyFindings")}
             </h3>
             <ul className="space-y-2">
               {finalFindings.map((f, i) => {

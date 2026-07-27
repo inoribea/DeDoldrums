@@ -1,11 +1,5 @@
 export type StageId = "-1" | "0" | "1" | "2" | "3" | "3.5" | "4";
 
-export interface StageMeta {
-  id: StageId;
-  label: string;
-  description: string;
-}
-
 export interface LiveFinding {
   /** Sequential index assigned as findings arrive. */
   index: number;

@@ -1,4 +1,5 @@
-import type { StageId, StageMeta } from "@/lib/types";
+import type { StageId } from "@/lib/types";
+import type { Translations } from "@/lib/i18n";
 
 export const STAGE_ORDER: StageId[] = [
   "-1",
@@ -10,41 +11,49 @@ export const STAGE_ORDER: StageId[] = [
   "4",
 ];
 
-export const STAGES: Record<StageId, StageMeta> = {
+/**
+ * Stage metadata is fully driven by the i18n dictionary — no hardcoded
+ * English strings here. Consumers look up labels/descriptions via the
+ * translation keys returned by these helpers.
+ */
+export const STAGES: Record<
+  StageId,
+  { id: StageId; labelKey: keyof Translations; descriptionKey: keyof Translations }
+> = {
   "-1": {
     id: "-1",
-    label: "Initializing",
-    description: "Spinning up the research session",
+    labelKey: "stage.-1.label",
+    descriptionKey: "stage.-1.description",
   },
   "0": {
     id: "0",
-    label: "Discovering Perspectives",
-    description: "Dynamic lens discovery from search results",
+    labelKey: "stage.0.label",
+    descriptionKey: "stage.0.description",
   },
   "1": {
     id: "1",
-    label: "Multi-Perspective Scan",
-    description: "Independent exploration across lenses",
+    labelKey: "stage.1.label",
+    descriptionKey: "stage.1.description",
   },
   "2": {
     id: "2",
-    label: "Contradiction Mapping",
-    description: "Conflicts, consensus, blind spots",
+    labelKey: "stage.2.label",
+    descriptionKey: "stage.2.description",
   },
   "3": {
     id: "3",
-    label: "Synthesis",
-    description: "Cross-lens connections into a structured brief",
+    labelKey: "stage.3.label",
+    descriptionKey: "stage.3.description",
   },
   "3.5": {
     id: "3.5",
-    label: "Adversarial Gate",
-    description: "Generator-Verifier pressure test on every finding",
+    labelKey: "stage.3.5.label",
+    descriptionKey: "stage.3.5.description",
   },
   "4": {
     id: "4",
-    label: "Peer Review",
-    description: "Confidence scores, bias check, missing angles",
+    labelKey: "stage.4.label",
+    descriptionKey: "stage.4.description",
   },
 };
 

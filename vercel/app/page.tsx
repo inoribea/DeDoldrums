@@ -8,14 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { FinalResults } from "@/components/final-results";
+import { Header } from "@/components/header";
 import { LiveOutput } from "@/components/live-output";
 import { StageStepper } from "@/components/stage-stepper";
 import { useResearch } from "@/hooks/use-research";
-
-const EXAMPLE_PLACEHOLDER =
-  "What is the real timeline for quantum computing to break RSA?";
+import { useLanguage } from "@/lib/i18n";
 
 export default function Home() {
+  const { t } = useLanguage();
   const [question, setQuestion] = useState("");
   const research = useResearch();
 
@@ -54,23 +54,8 @@ export default function Home() {
 
   return (
     <main className="flex flex-col gap-8">
-      {/* Hero */}
-      <header className="flex flex-col gap-2 pt-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-primary" />
-          <span className="font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-            hybrid STORM
-          </span>
-        </div>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          ResearchAgent
-        </h1>
-        <p className="max-w-xl text-sm text-muted-foreground sm:text-base">
-          Multi-perspective research powered by hybrid STORM methodology.
-          Dynamic lens discovery, contradiction mapping, adversarial gate,
-          peer review.
-        </p>
-      </header>
+      {/* Header (brand + toggles) */}
+      <Header />
 
       {/* Input */}
       <Card>
@@ -80,10 +65,10 @@ export default function Home() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={EXAMPLE_PLACEHOLDER}
+              placeholder={t("input.example")}
               disabled={isBusy}
               className="min-h-[96px] resize-y border-border/70 bg-background/60 text-base"
-              aria-label="Research question"
+              aria-label={t("input.placeholder")}
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -94,17 +79,17 @@ export default function Home() {
                 {isBusy ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Researching…
+                    {t("input.researching")}
                   </>
                 ) : (
                   <>
                     <Search className="h-4 w-4" />
-                    Start research
+                    {t("input.start")}
                   </>
                 )}
               </Button>
               <span className="text-xs text-muted-foreground">
-                Press{" "}
+                {t("input.press")}{" "}
                 <kbd className="rounded border border-border bg-secondary px-1 py-0.5 font-mono text-[10px]">
                   ⌘/Ctrl
                 </kbd>{" "}
@@ -121,7 +106,7 @@ export default function Home() {
                   className="ml-auto gap-1.5"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  New research
+                  {t("input.newResearch")}
                 </Button>
               )}
             </div>
@@ -134,7 +119,7 @@ export default function Home() {
         <div className="flex items-start gap-2.5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <p className="font-medium">Research failed</p>
+            <p className="font-medium">{t("error.failed")}</p>
             <p className="mt-0.5 text-destructive/80">{error}</p>
           </div>
         </div>
@@ -145,9 +130,9 @@ export default function Home() {
         <Card>
           <CardContent className="p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">Pipeline</span>
+              <span className="text-sm font-medium">{t("pipeline.label")}</span>
               <Badge variant="outline" className="font-mono text-[10px]">
-                stage {currentStage}
+                {t("pipeline.stage")} {currentStage}
               </Badge>
               {stageDescription && (
                 <span className="text-xs text-muted-foreground">
@@ -184,7 +169,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-2 border-t border-border/60 pt-4 text-center text-xs text-muted-foreground">
         <p>
-          ResearchAgent · Built on{" "}
+          {t("brand.title")} · {t("footer.builtOn")}{" "}
           <a
             href="https://github.com/lsdefine/GenericAgent"
             target="_blank"

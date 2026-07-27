@@ -4,7 +4,46 @@
 
 @layer base {
   :root {
-    /* Dark theme only — GitHub-dark inspired, slate base */
+    /* Light theme — clean white, slate text, same blue accent */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 212 92% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 47% 11%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 137 52% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 88%;
+    --ring: 212 92% 50%;
+
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    /* Dark theme — GitHub-dark inspired, slate base */
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
 
@@ -38,8 +77,6 @@
     --border: 217 33% 18%;
     --input: 217 33% 20%;
     --ring: 212 92% 60%;
-
-    --radius: 0.6rem;
   }
 }
 
@@ -48,6 +85,9 @@
     @apply border-border;
   }
   html {
+    color-scheme: light;
+  }
+  html.dark {
     color-scheme: dark;
   }
   body {
