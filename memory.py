@@ -117,55 +117,6 @@ class MemoryStore:
             with open(path, "a", encoding="utf-8") as file:
                 file.write(entry)
 
-    def save_graph_edge(
-        self,
-        from_finding: str,
-        to_finding: str,
-        relation: str,
-        topic: str,
-    ) -> None:
-        """Record a supports, challenges, extends, or depends_on relationship."""
-        if relation not in {"supports", "challenges", "extends", "depends_on"}:
-            return
-
-        path = os.path.join(self.base, "L2_domain", "graph_index.json")
-        with self._lock_for(path):
-            graph = self._read_json(path, {})
-            if not isinstance(graph, dict):
-                graph = {}
-
-            edge_key = self._safe_filename(topic)
-            if edge_key not in graph or not isinstance(graph[edge_key], dict):
-                graph[edge_key] = {"topic": topic, "edges": []}
-            if not isinstance(graph[edge_key].get("edges"), list):
-                graph[edge_key]["edges"] = []
-
-            graph[edge_key]["edges"].append(
-                {
-                    "from": from_finding[:200],
-                    "to": to_finding[:200],
-                    "relation": relation,
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
-
-            with open(path, "w", encoding="utf-8") as file:
-                json.dump(graph, file, ensure_ascii=False, indent=2)
-
-    def query_graph(self, topic: str) -> list[dict[str, Any]]:
-        """Return graph relationships for a topic."""
-        path = os.path.join(self.base, "L2_domain", "graph_index.json")
-        with self._lock_for(path):
-            graph = self._read_json(path, {})
-        if not isinstance(graph, dict):
-            return []
-
-        entry = graph.get(self._safe_filename(topic), {})
-        if not isinstance(entry, dict):
-            return []
-        edges = entry.get("edges", [])
-        return [edge for edge in edges if isinstance(edge, dict)] if isinstance(edges, list) else []
-
     # ── L3: Thinking SOPs ──
     def save_sop(self, insight: str, trigger: str) -> None:
         path = os.path.join(self.base, "L3_thinking_sops", "patterns.md")

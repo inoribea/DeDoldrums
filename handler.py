@@ -95,8 +95,16 @@ class ResearchHandler:
             self.on_status(f"Challenge: {args.get('mode', 'all')}")
         result = await do_challenge(args, self.llm)
         if self.stage == 3.5:
-            target = str(args.get("target", len(self.adversarial_results)))
-            status = result.get("status", args.get("status", "verified"))
+            target = str(args.get("target", ""))[:120]
+            if not target:
+                target = f"finding_{len(self.adversarial_results)}"
+            # Check if LLM found issues — simple heuristic
+            challenges = result.get("challenges", {})
+            has_issues = any(
+                v and "没问题" not in str(v) and "无问题" not in str(v) and "没有发现" not in str(v)
+                for v in challenges.values()
+            )
+            status = "needs_revision" if has_issues else "challenged"
             self.adversarial_results[target] = {"status": status, "data": result}
         return StepOutcome(result)
 
@@ -178,10 +186,13 @@ class ResearchHandler:
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
+            # Gate requires at least 1 challenge, and no finding still needs revision
+            if len(self.adversarial_results) == 0:
+                return None  # agent hasn't called challenge yet — keep waiting
             pending = [
                 key
                 for key, value in self.adversarial_results.items()
-                if value.get("status") not in ("verified", "cannot_verify")
+                if value.get("status") == "needs_revision"
             ]
             if not pending:
                 self.stage = 4

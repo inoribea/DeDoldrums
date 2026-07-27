@@ -11,7 +11,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 try:
-    from .lenses import LENS_LIBRARY, get_lens
+    from .lenses import LENS_LIBRARY, get_lens, get_lens
     from .memory import MemoryStore
     from .prompts import REFLECT_SYSTEM_PROMPT
 except ImportError:  # Supports direct execution from the package directory.
@@ -137,7 +137,7 @@ async def do_reflect(args: dict[str, Any], llm_client: Any) -> dict[str, str]:
     """Apply a named STORM thinking lens to the supplied findings."""
     lens = str(args.get("lens", "")).strip()
     focus = str(args.get("focus", "")).strip()
-    lens_config = LENS_LIBRARY.get(lens)
+    lens_config = get_lens(lens)
     if lens_config is None:
         return {"lens": lens, "lens_name": "", "analysis": f"Unknown lens: {lens}"}
     if not focus:

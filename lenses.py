@@ -90,9 +90,14 @@ class ChatClient(Protocol):
         """Return an object exposing a ``content`` attribute."""
 
 
-def get_lens(key: str) -> dict[str, Any]:
-    """Return the fallback configuration registered under ``key``."""
-    return LENS_LIBRARY[key]
+_dynamic_lenses: dict[str, dict[str, Any]] = {}
+
+
+def get_lens(key: str) -> dict[str, Any] | None:
+    """Look up a lens by key — dynamic (topic-specific) first, then static library."""
+    if key in _dynamic_lenses:
+        return _dynamic_lenses[key]
+    return LENS_LIBRARY.get(key)
 
 
 async def discover_lenses(
@@ -133,6 +138,17 @@ async def discover_lenses(
             role="creative",
         )
         dynamic_lenses = _parse_dynamic_lenses(getattr(response, "content", ""))
+        # Register discovered lenses so do_reflect can resolve them
+        for lens in dynamic_lenses:
+            key = lens.get("key", "")
+            if key and key not in _dynamic_lenses:
+                _dynamic_lenses[key] = {
+                    "name": lens.get("name", key),
+                    "identity": lens.get("identity", ""),
+                    "concerns": lens.get("concerns", ""),
+                    "blind_spot": lens.get("blind_spot", ""),
+                    "temperature": 0.8,  # default for dynamic lenses
+                }
         if getattr(response, "error", None):
             LOGGER.warning("Dynamic lens discovery failed: %s", response.error)
     except (OSError, TypeError, ValueError) as exc:
