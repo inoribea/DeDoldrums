@@ -131,8 +131,11 @@ class ResearchBridge:
             session.add_event("stage_change", {"stage": 0, "description": self._stage_name(0)})
             if session.cancelled.is_set():
                 return
+            # Wire callbacks into the session's handler so findings are collected there
+            session.handler.on_status = on_status
+            session.handler.on_stage = on_stage
             logger.info("Starting research: %s", session.question[:80])
-            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=50, on_status=on_status, on_stage=on_stage))
+            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=50, on_status=on_status, on_stage=on_stage, handler=session.handler))
             logger.info("Research completed — brief: %d chars, findings: %d",
                         len(brief), len(getattr(session.handler, "findings", [])))
             if len(brief) < 50:

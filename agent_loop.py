@@ -61,6 +61,7 @@ async def research_loop(
     max_turns: int = 25,
     on_status: Any = None,
     on_stage: Any = None,
+    handler: Any = None,
 ) -> str:
     """Run the full -1 → 4 research pipeline and return its final brief.
 
@@ -92,7 +93,14 @@ async def research_loop(
         refined_question = question
 
     # ── Research pipeline ──
-    handler = ResearchHandler(question, memory, llm_client, on_status=on_status, on_stage=on_stage)
+    if handler is None:
+        handler = ResearchHandler(question, memory, llm_client, on_status=on_status, on_stage=on_stage)
+    else:
+        handler.question = question
+        handler.memory = memory
+        handler.llm = llm_client
+        handler.on_status = on_status
+        handler.on_stage = on_stage
     _status("Starting multi-perspective research pipeline…")
     relevant_memories = memory.search(
         refined_question,
