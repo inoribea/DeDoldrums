@@ -151,7 +151,7 @@ class BaseBackend:
 
     def __init__(self, api_key: str | None, base_url: str, model: str) -> None:
         self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.strip().rstrip("/")
         self.model = model
 
     async def _post(
@@ -166,7 +166,9 @@ class BaseBackend:
                     f"{self.base_url}{path}", json=payload, headers=headers
                 )
             if response.is_error:
-                return None, _error_detail(response)
+                detail = _error_detail(response)
+                LOGGER.warning("LLM %s error: %s", path, detail[:200])
+                return None, detail
             data = response.json()
             if not isinstance(data, Mapping):
                 return None, "Invalid API response: expected a JSON object"
