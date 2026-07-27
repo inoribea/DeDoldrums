@@ -192,13 +192,20 @@ export function useResearch(): UseResearchReturn {
         setState((s) => ({ ...s, status: "streaming" }));
 
         // Poll history every POLL_INTERVAL ms
+        const sid = sessionId;
+        let pollCount = 0;
         const poll = async () => {
+          pollCount++;
           try {
             const histResp = await fetch(
-              `${base}/api/session/${encodeURIComponent(sessionId)}/history`,
+              `${base}/api/session/${encodeURIComponent(sid)}/history`,
             );
             if (!histResp.ok) return;
             const data = (await histResp.json()) as { done: boolean; messages: string[] };
+            const msgCount = data.messages?.length || 0;
+            if (msgCount > seenCountRef.current) {
+              console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
+            }
             processMessages(data.messages || []);
             if (data.done) {
               stopPolling();
