@@ -7,13 +7,21 @@ http://127.0.0.1:14168 without any external deployment.
 
 import asyncio
 import json
+import logging
 import mimetypes
 import os
 import pathlib
+import sys
 import threading
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
 
 from aiohttp import web  # type: ignore[reportMissingImports]
 
@@ -274,7 +282,11 @@ def create_app() -> web.Application:
 def main(handle_signals: bool = True) -> None:
     host = os.environ.get("BRIDGE_HOST", "127.0.0.1")
     port = int(os.environ.get("BRIDGE_PORT", "14168"))
-    web.run_app(create_app(), host=host, port=port, handle_signals=handle_signals)
+    logger = logging.getLogger("bridge")
+    logger.info("Starting ResearchAgent bridge on http://%s:%d", host, port)
+    if not os.environ.get("OPENAI_API_KEY"):
+        logger.warning("OPENAI_API_KEY is not set — LLM calls will fail")
+    web.run_app(create_app(), host=host, port=port, handle_signals=handle_signals, print=lambda msg: logger.info(msg.rstrip()))
 
 
 if __name__ == "__main__":

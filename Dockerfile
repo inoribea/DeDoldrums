@@ -13,5 +13,6 @@ EXPOSE 14168
 
 ENV BRIDGE_HOST=0.0.0.0
 ENV BRIDGE_PORT=14168
+ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "bridge.py"]
+CMD ["python", "-u", "bridge.py"]
