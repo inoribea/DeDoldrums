@@ -41,11 +41,12 @@ class StepOutcome:
 class ResearchHandler:
     """Route tools and advance the distinct stages of the STORM pipeline."""
 
-    def __init__(self, question: str, memory: MemoryStore, llm_client: Any, on_status: Any = None) -> None:
+    def __init__(self, question: str, memory: MemoryStore, llm_client: Any, on_status: Any = None, on_stage: Any = None) -> None:
         self.question = question
         self.memory = memory
         self.llm = llm_client
         self.on_status = on_status
+        self.on_stage = on_stage
         self.stage: int | float = -1
         self.findings: list[dict[str, Any]] = []
         self.lenses_used: set[str] = set()
@@ -110,6 +111,8 @@ class ResearchHandler:
         if self.stage == -1:
             if self.on_status:
                 self.on_status("Stage 0: Discovering perspectives…")
+            if self.on_stage:
+                self.on_stage(0, "动态视角发现")
             self.dynamic_lenses = await discover_lenses(self.question, self.llm)
             self.stage = 0
             return f"""[研究阶段 0/4: 动态视角发现]
@@ -134,6 +137,8 @@ class ResearchHandler:
                 self.stage = 1
                 if self.on_status:
                     self.on_status("Stage 1: Multi-perspective scan…")
+                if self.on_stage:
+                    self.on_stage(1, "多视角扫描")
                 return STAGE1_MULTI_PERSPECTIVE.format(
                     question=self.question,
                     lenses=self.dynamic_lenses,
@@ -145,6 +150,8 @@ class ResearchHandler:
                 self.stage = 2
                 if self.on_status:
                     self.on_status("Stage 2: Mapping contradictions…")
+                if self.on_stage:
+                    self.on_stage(2, "矛盾映射")
                 return STAGE2_CONTRADICTION_MAP
             return None
 
@@ -152,12 +159,16 @@ class ResearchHandler:
             self.stage = 3
             if self.on_status:
                 self.on_status("Stage 3: Synthesizing findings…")
+            if self.on_stage:
+                self.on_stage(3, "综合合成")
             return STAGE3_SYNTHESIS
 
         if self.stage == 3:
             self.stage = 3.5
             if self.on_status:
                 self.on_status("Stage 3.5: Adversarial verification gate…")
+            if self.on_stage:
+                self.on_stage(3.5, "对抗验证闸门")
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
@@ -170,6 +181,8 @@ class ResearchHandler:
                 self.stage = 4
                 if self.on_status:
                     self.on_status("Stage 4: Peer review…")
+                if self.on_stage:
+                    self.on_stage(4, "同行评审")
                 return STAGE4_PEER_REVIEW
             return None
 

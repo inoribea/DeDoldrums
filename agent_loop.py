@@ -60,6 +60,7 @@ async def research_loop(
     question: str,
     max_turns: int = 25,
     on_status: Any = None,
+    on_stage: Any = None,
 ) -> str:
     """Run the full -1 → 4 research pipeline and return its final brief.
 
@@ -67,11 +68,15 @@ async def research_loop(
     well-scoped research question before entering the STORM pipeline.
 
     If *on_status* is provided, it is called as ``on_status(message)``
-    at each significant step so the bridge can relay live status to the UI.
+    at each significant step. If *on_stage* is provided, it is called
+    as ``on_stage(stage, description)`` on stage transitions.
     """
     def _status(msg: str) -> None:
         if on_status:
             on_status(msg)
+    def _stage(stage: int | float, desc: str) -> None:
+        if on_stage:
+            on_stage(stage, desc)
 
     memory = MemoryStore("memory/")
 
@@ -87,7 +92,7 @@ async def research_loop(
         refined_question = question
 
     # ── Research pipeline ──
-    handler = ResearchHandler(question, memory, llm_client, on_status=on_status)
+    handler = ResearchHandler(question, memory, llm_client, on_status=on_status, on_stage=on_stage)
     _status("Starting multi-perspective research pipeline…")
     relevant_memories = memory.search(
         refined_question,
