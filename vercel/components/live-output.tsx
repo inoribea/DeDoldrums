@@ -54,7 +54,7 @@ export function LiveOutput({ status, findings, challenge, statusMessage }: LiveO
             {isEmpty && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 {isStreaming
-                  ? t("live.waiting")
+                  ? (statusMessage || t("live.waiting"))
                   : t("live.idle")}
               </p>
             )}
