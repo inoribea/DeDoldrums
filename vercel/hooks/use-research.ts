@@ -191,7 +191,6 @@ export function useResearch(): UseResearchReturn {
       let pollCount = 0;
       const base = window.location.origin;
       const poll = () => {
-        console.log("[poll] tick", pollCount + 1, "stopped:", stoppedRef.current);
         if (stoppedRef.current) return;
         pollCount++;
         fetch(`${base}/api/session/${encodeURIComponent(sid)}/history?_=${Date.now()}`, { method: "POST" })
@@ -200,14 +199,8 @@ export function useResearch(): UseResearchReturn {
             return r.json() as Promise<{ done: boolean; messages: string[] }>;
           })
           .then((data) => {
-            if (!data || stoppedRef.current) {
-              console.log("[poll] bail — data:", !!data, "stopped:", stoppedRef.current);
-              return;
-            }
+            if (!data || stoppedRef.current) return;
             const msgCount = data.messages?.length || 0;
-            if (msgCount > seenCountRef.current) {
-              console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
-            }
             processMessages(data.messages || []);
             if (data.done) {
               stopPolling();
@@ -218,14 +211,12 @@ export function useResearch(): UseResearchReturn {
               return;
             }
             if (!stoppedRef.current) {
-              console.log("[poll] scheduling next in", POLL_INTERVAL, "ms");
               pollingRef.current = window.setTimeout(poll, POLL_INTERVAL);
             }
           })
           .catch((e) => {
             console.warn("[poll] error:", e);
             if (!stoppedRef.current) {
-              console.log("[poll] scheduling after error");
               pollingRef.current = window.setTimeout(poll, POLL_INTERVAL);
             }
           });
