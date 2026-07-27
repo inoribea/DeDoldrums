@@ -72,6 +72,7 @@ class ResearchSession:
         with self.lock:
             self.messages.append(message)
             queue, loop = self.sse_queue, self.loop
+        logging.getLogger("bridge").info("add_event %s (total: %d)", event_type, len(self.messages))
         if queue is not None and loop is not None and not loop.is_closed():
             asyncio.run_coroutine_threadsafe(queue.put(message), loop)
 
