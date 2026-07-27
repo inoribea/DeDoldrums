@@ -155,7 +155,7 @@ async def do_reflect(args: dict[str, Any], llm_client: Any) -> dict[str, str]:
     return {"lens": lens, "lens_name": lens_config["name"], "analysis": analysis}
 
 
-async def do_challenge(args: dict[str, Any], llm_client: Any) -> dict[str, Any]:
+async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = None) -> dict[str, Any]:
     """Stress-test a conclusion for logical and evidentiary weaknesses."""
     target = str(args.get("target", "")).strip()
     mode = args.get("mode", "all")
@@ -174,6 +174,9 @@ async def do_challenge(args: dict[str, Any], llm_client: Any) -> dict[str, Any]:
     modes_to_run = challenge_prompts if mode == "all" else {mode: challenge_prompts[mode]}
     results = {}
     for current_mode, instruction in modes_to_run.items():
+        if on_status:
+            label = {"logic_flaw": "Logic check", "hidden_assumption": "Hidden assumptions", "missing_evidence": "Missing evidence", "alternative_explanation": "Alternative explanations"}.get(current_mode, current_mode)
+            on_status(f"Challenge: {label}…")
         prompt = f"""作为严格的同行评审者，{instruction}。
 
 论点: {target}

@@ -93,7 +93,7 @@ class ResearchHandler:
     async def do_challenge(self, args: dict[str, Any], response: Any) -> StepOutcome:
         if self.on_status:
             self.on_status(f"Challenge: {args.get('mode', 'all')}")
-        result = await do_challenge(args, self.llm)
+        result = await do_challenge(args, self.llm, on_status=self.on_status)
         if self.stage == 3.5:
             target = str(args.get("target", ""))[:120]
             if not target:
