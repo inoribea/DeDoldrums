@@ -14,6 +14,7 @@ import { normalizeStage, STAGES } from "@/lib/stages";
 import { useLanguage } from "@/lib/i18n";
 
 const POLL_INTERVAL = 2000;
+const LS_SESSION_KEY = "research-agent-session";
 
 interface UseResearchState {
   status: ResearchStatus;
@@ -61,6 +62,24 @@ function summarizeFinding(data: {
   return { summary, content };
 }
 
+function loadSession(): { sid: string } | null {
+  try {
+    const raw = localStorage.getItem(LS_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.sid) return { sid: parsed.sid };
+  } catch { /* ignore */ }
+  return null;
+}
+
+function saveSession(sid: string) {
+  try { localStorage.setItem(LS_SESSION_KEY, JSON.stringify({ sid })); } catch { /* ignore */ }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(LS_SESSION_KEY); } catch { /* ignore */ }
+}
+
 export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,6 +103,7 @@ export function useResearch(): UseResearchReturn {
     seenCountRef.current = 0;
     sessionIdRef.current = null;
     stoppedRef.current = false;
+    clearSession();
     setState(INITIAL_STATE);
   }, [stopPolling]);
 
@@ -94,6 +114,7 @@ export function useResearch(): UseResearchReturn {
       await fetch(`/api/session/${encodeURIComponent(sid)}/cancel`, { method: "POST" });
     } catch { /* best-effort */ }
     stopPolling();
+    clearSession();
     setState((s) => ({ ...s, status: "complete" as const }));
   }, [stopPolling]);
 
@@ -134,6 +155,7 @@ export function useResearch(): UseResearchReturn {
               },
             }));
           } else if (event.type === "complete") {
+            clearSession();
             setState((s) => ({
               ...s,
               status: "complete",
@@ -144,6 +166,7 @@ export function useResearch(): UseResearchReturn {
               statusMessage: null,
             }));
           } else if (event.type === "error") {
+            clearSession();
             setState((s) => ({
               ...s,
               status: "error",
@@ -155,6 +178,44 @@ export function useResearch(): UseResearchReturn {
       seenCountRef.current = messages.length;
     },
     [t],
+  );
+
+  const setupPolling = useCallback(
+    (sid: string) => {
+      stoppedRef.current = false;
+      sessionIdRef.current = sid;
+      saveSession(sid);
+
+      let pollCount = 0;
+      const base = window.location.origin;
+      const poll = async () => {
+        if (stoppedRef.current) return;
+        pollCount++;
+        try {
+          const histResp = await fetch(
+            `${base}/api/session/${encodeURIComponent(sid)}/history`,
+          );
+          if (!histResp.ok || stoppedRef.current) return;
+          const data = (await histResp.json()) as { done: boolean; messages: string[] };
+          const msgCount = data.messages?.length || 0;
+          if (msgCount > seenCountRef.current) {
+            console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
+          }
+          processMessages(data.messages || []);
+          if (data.done || stoppedRef.current) {
+            stopPolling();
+            return;
+          }
+        } catch (e) {
+          console.warn("[poll] error:", e);
+        }
+        if (!stoppedRef.current) {
+          pollingRef.current = setTimeout(poll, POLL_INTERVAL);
+        }
+      };
+      pollingRef.current = setTimeout(poll, 0);
+    },
+    [stopPolling, processMessages],
   );
 
   const start = useCallback(
@@ -178,7 +239,6 @@ export function useResearch(): UseResearchReturn {
 
         const { sessionId } = (await newResp.json()) as { sessionId: string };
         if (!sessionId) throw new Error("Bridge returned no session id");
-        sessionIdRef.current = sessionId;
 
         setState((s) => ({ ...s, status: "starting" }));
 
@@ -193,52 +253,44 @@ export function useResearch(): UseResearchReturn {
         if (!startResp.ok) throw new Error(`Failed to start research (${startResp.status})`);
 
         setState((s) => ({ ...s, status: "streaming" }));
-
-        // Poll history with recursive setTimeout
-        stoppedRef.current = false;
-        const sid = sessionId;
-        let pollCount = 0;
-        const poll = async () => {
-          if (stoppedRef.current) return;
-          pollCount++;
-          try {
-            const histResp = await fetch(
-              `${base}/api/session/${encodeURIComponent(sid)}/history`,
-            );
-            if (!histResp.ok || stoppedRef.current) return;
-            const data = (await histResp.json()) as { done: boolean; messages: string[] };
-            const msgCount = data.messages?.length || 0;
-            if (msgCount > seenCountRef.current) {
-              console.log(`[poll #${pollCount}] new messages: ${seenCountRef.current} → ${msgCount}, done=${data.done}`);
-            }
-            processMessages(data.messages || []);
-            if (data.done || stoppedRef.current) {
-              stopPolling();
-              if (data.done) {
-                setState((s) => {
-                  if (s.status !== "complete" && s.status !== "error") {
-                    return { ...s, status: "complete" };
-                  }
-                  return s;
-                });
-              }
-              return;
-            }
-          } catch (e) {
-            console.warn("[poll] error:", e);
-          }
-          if (!stoppedRef.current) {
-            pollingRef.current = setTimeout(poll, POLL_INTERVAL);
-          }
-        };
-        pollingRef.current = setTimeout(poll, 0);
+        setupPolling(sessionId);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unexpected request failure";
         setState((s) => ({ ...s, status: "error", error: message }));
       }
     },
-    [stopPolling, processMessages, t],
+    [stopPolling, setupPolling, t],
   );
+
+  // On mount: reconnect to saved session if exists
+  useEffect(() => {
+    const saved = loadSession();
+    if (!saved?.sid) return;
+    // Check if session still exists on bridge
+    const base = window.location.origin;
+    fetch(`${base}/api/session/${encodeURIComponent(saved.sid)}/history`)
+      .then((r) => {
+        if (!r.ok) { clearSession(); return; }
+        return r.json();
+      })
+      .then((data: { done: boolean; messages: string[] } | undefined) => {
+        if (!data) return;
+        processMessages(data.messages || []);
+        if (data.done) {
+          setState((s) => ({
+            ...s,
+            status: "complete",
+            currentStage: "4",
+          }));
+          clearSession();
+        } else {
+          setState((s) => ({ ...s, status: "streaming" }));
+          setupPolling(saved.sid);
+        }
+      })
+      .catch(() => clearSession());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
