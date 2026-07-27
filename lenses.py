@@ -78,6 +78,7 @@ class ChatClient(Protocol):
         messages: Sequence[Mapping[str, Any]],
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        role: str | None = None,
     ) -> Any:
         """Return an object exposing a ``content`` attribute."""
 
@@ -108,6 +109,7 @@ async def discover_lenses(question: str, llm_client: ChatClient) -> list[dict[st
         response = await llm_client.chat(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.8,
+            role="creative",
         )
         dynamic_lenses = _parse_dynamic_lenses(getattr(response, "content", ""))
         if getattr(response, "error", None):

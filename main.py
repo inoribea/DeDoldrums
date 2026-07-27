@@ -6,15 +6,15 @@ from typing import Any
 
 try:  # Support both ``python main.py`` and ``python -m research_agent.main``.
     from .agent_loop import research_loop  # pyright: ignore[reportMissingImports]
-    from .config import get_config
+    from .config import get_router_config
     from .goal_mode import ResearchGoalMode  # pyright: ignore[reportMissingImports]
-    from .llm import LLMClient
+    from .llm import LLMRouter
     from .memory import MemoryStore
 except ImportError:  # pragma: no cover - exercised by direct script execution.
     from agent_loop import research_loop  # pyright: ignore[reportMissingImports]
-    from config import get_config
+    from config import get_router_config
     from goal_mode import ResearchGoalMode  # pyright: ignore[reportMissingImports]
-    from llm import LLMClient
+    from llm import LLMRouter
     from memory import MemoryStore
 
 
@@ -46,8 +46,8 @@ async def _run_goal_mode(client: Any, question: str, budget: int, max_turns: int
 async def main() -> None:
     """Parse CLI arguments, run the selected mode, then archive the result."""
     args = parse_args()
-    config = get_config()
-    client = LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["model"])
+    router_config = get_router_config()
+    client = LLMRouter(router_config)
     if args.goal:
         brief = await _run_goal_mode(client, args.question, args.budget, args.max_turns)
     else:

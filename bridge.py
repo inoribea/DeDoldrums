@@ -19,14 +19,14 @@ from aiohttp import web  # type: ignore[reportMissingImports]
 
 try:  # Support direct script execution as documented by the project guide.
     from .agent_loop import ResearchHandler, research_loop  # pyright: ignore[reportMissingImports]
-    from .config import get_config
-    from .llm import LLMClient
+    from .config import get_router_config
+    from .llm import LLMRouter
     from .memory import MemoryStore
     from .tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - direct script execution path.
     from agent_loop import ResearchHandler, research_loop  # pyright: ignore[reportMissingImports]
-    from config import get_config
-    from llm import LLMClient
+    from config import get_router_config
+    from llm import LLMRouter
     from memory import MemoryStore
     from tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
 
@@ -34,9 +34,8 @@ except ImportError:  # pragma: no cover - direct script execution path.
 _FRONTEND_DIR = pathlib.Path(__file__).resolve().parent / "vercel"
 
 
-def _new_llm_client() -> LLMClient:
-    config = get_config()
-    return LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["model"])
+def _new_llm_client():
+    return LLMRouter(get_router_config())
 
 
 @dataclass

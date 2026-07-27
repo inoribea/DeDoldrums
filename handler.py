@@ -61,12 +61,12 @@ class ResearchHandler:
     async def do_reflect(self, args: dict[str, Any], response: Any) -> StepOutcome:
         lens = str(args["lens"])
         self.lenses_used.add(lens)
-        result = await do_reflect(args, response)
+        result = await do_reflect(args, self.llm)
         self.findings.append({"type": "reflection", "lens": lens, "data": result})
         return StepOutcome(result)
 
     async def do_challenge(self, args: dict[str, Any], response: Any) -> StepOutcome:
-        result = await do_challenge(args, response)
+        result = await do_challenge(args, self.llm)
         if self.stage == 3.5:
             target = str(args.get("target", len(self.adversarial_results)))
             status = result.get("status", args.get("status", "verified"))
@@ -80,7 +80,7 @@ class ResearchHandler:
     async def get_stage_prompt(self) -> Optional[str]:
         """Return the next stage instruction, advancing only at its defined gate."""
         if self.stage == -1:
-            self.dynamic_lenses = await discover_lenses(self.question, self.memory)
+            self.dynamic_lenses = await discover_lenses(self.question, self.llm)
             self.stage = 0
             return f"""[研究阶段 0/4: 动态视角发现]
 

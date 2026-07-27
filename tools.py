@@ -4,13 +4,13 @@
 
 from __future__ import annotations
 
-import inspect
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
 
+from .lenses import LENS_LIBRARY, get_lens
 from .memory import MemoryStore
 from .prompts import REFLECT_SYSTEM_PROMPT
 
@@ -99,73 +99,6 @@ TOOLS_SCHEMA = [
 ]
 
 
-LENS_LIBRARY = {
-    "practitioner": {
-        "name": "实践者",
-        "identity": "你是一个每天与这个话题打交道的从业者。你看到的是教科书不会写的真实情况。",
-        "concerns": "实际可用性、隐性成本、常见坑、非正式的最佳实践",
-        "blind_spot": "容易忽视理论突破和长期趋势",
-        "temperature": 0.8,
-    },
-    "skeptic": {
-        "name": "怀疑论者",
-        "identity": "你相信主流观点是错的（或至少被严重夸大）。你的工作是找到最有力的反证。",
-        "concerns": "夸大宣传、幸存者偏差、被压制的负面证据、利益冲突",
-        "blind_spot": "可能忽视真实的进步和共识形成的原因",
-        "temperature": 0.9,
-    },
-    "economist": {
-        "name": "经济学家",
-        "identity": "你跟的是钱。每一个叙事背后都有不被明说的经济激励。",
-        "concerns": "谁出钱、谁赚钱、激励结构、市场集中度、沉没成本",
-        "blind_spot": "容易忽视非经济价值（文化、伦理、美感）",
-        "temperature": 0.7,
-    },
-    "historian": {
-        "name": "历史学家",
-        "identity": "你见过这个模式。历史上总有类似的事情发生过——关键是从上次的结局中学到什么。",
-        "concerns": "历史类比、模式重复、上次怎么失败的、制度惯性",
-        "blind_spot": "可能过度依赖类比而忽视质变（真正的范式转移）",
-        "temperature": 0.8,
-    },
-    "academic": {
-        "name": "学者",
-        "identity": "你读过原始文献——不是媒体报道、不是推文、不是综述文章。你知道研究实际说了什么。",
-        "concerns": "效应量、方法严谨性、可复现性、发表偏倚",
-        "blind_spot": "可能忽视实践智慧和市场信号",
-        "temperature": 0.5,
-    },
-    "first_principles": {
-        "name": "第一性原理",
-        "identity": "你拒绝类比。把问题拆到不可再分的物理/逻辑原子，从零重建理解。",
-        "concerns": "基本约束、物理极限、逻辑必然性、信息边界",
-        "blind_spot": "可能忽视社会/文化/制度层面的现实约束",
-        "temperature": 0.6,
-    },
-    "counterfactual": {
-        "name": "反事实推理",
-        "identity": "你的工作是：假设关键条件发生了变化，重新推演整个逻辑链。",
-        "concerns": "因果方向、必要条件 vs 充分条件、蝴蝶效应",
-        "blind_spot": "可能产出有趣的思辨但缺乏实证锚点",
-        "temperature": 0.9,
-    },
-    "systems_thinking": {
-        "name": "系统思维",
-        "identity": "你关注系统中的反馈回路、延迟、边界和涌现行为。",
-        "concerns": "反馈回路、二阶效应、瓶颈、系统边界",
-        "blind_spot": "可能低估个体行动和局部细节的重要性",
-        "temperature": 0.7,
-    },
-    "newcomer": {
-        "name": "新人",
-        "identity": "你完全不了解这个领域。你会问出专家们忘记问的基础问题。",
-        "concerns": "基础概念、常见误解、为什么重要、跟其他概念的关系",
-        "blind_spot": "可能无法区分「专家共识」和「领域内争议」",
-        "temperature": 0.7,
-    },
-}
-
-
 async def do_explore(args: dict[str, Any], memory: MemoryStore) -> dict[str, Any]:
     """Retrieve research material from the web, memory, or a specific URL."""
     query = str(args.get("query", "")).strip()
@@ -213,7 +146,7 @@ async def do_reflect(args: dict[str, Any], llm_client: Any) -> dict[str, str]:
         focus=focus,
         findings_context=args.get("findings_context", ""),
     )
-    analysis = await _call_llm(llm_client, prompt, lens_config["temperature"])
+    analysis = await _call_llm(llm_client, prompt, lens_config["temperature"], role="creative")
     return {"lens": lens, "lens_name": lens_config["name"], "analysis": analysis}
 
 
@@ -242,7 +175,7 @@ async def do_challenge(args: dict[str, Any], llm_client: Any) -> dict[str, Any]:
 背景: {context}
 
 请直接指出问题，不要客套。如果没问题就说没问题。"""
-        results[current_mode] = await _call_llm(llm_client, prompt, 0.3)
+        results[current_mode] = await _call_llm(llm_client, prompt, 0.3, role="content_review")
     return {"target": target, "challenges": results}
 
 
@@ -317,10 +250,10 @@ async def web_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
     return results
 
 
-async def _call_llm(llm_client: Any, prompt: str, temperature: float) -> str:
-    """Call an injected async LLM client without coupling tools to an SDK."""
-    chat = getattr(llm_client, "chat", llm_client)
-    response = chat(prompt, temperature=temperature)
-    if inspect.isawaitable(response):
-        response = await response
-    return str(getattr(response, "content", response))
+async def _call_llm(llm_client: Any, prompt: str, temperature: float, role: str = "creative") -> str:
+    response = await llm_client.chat(
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        role=role,
+    )
+    return str(getattr(response, "content", response) if hasattr(response, "content") else response)

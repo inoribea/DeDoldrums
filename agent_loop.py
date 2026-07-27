@@ -57,10 +57,10 @@ async def research_loop(
         if stage_prompt:
             messages.append({"role": "user", "content": stage_prompt})
 
-        response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA)
+        response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
         if not response.tool_calls:
             if handler.stage >= 4:
-                final_response = await llm_client.chat(messages=messages, tools=[])
+                final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
                 return final_response.content
             continue
 
@@ -86,7 +86,7 @@ async def research_loop(
 
         if handler.stage >= 4 and handler.findings and turn > 5:
             messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
-            final_response = await llm_client.chat(messages=messages, tools=[])
+            final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
             return final_response.content
 
     return "Research reached the maximum turn limit."
