@@ -76,7 +76,7 @@ class ResearchHandler:
                 self.on_status(f"Reading: {args.get('url', '')[:60]}…")
             elif source == "memory":
                 self.on_status(f"Searching memory: {query}…")
-        result = await do_explore(args, response)
+        result = await do_explore(args, self.memory)
         self.findings.append({"type": "exploration", "data": result})
         return StepOutcome(result)
 
@@ -102,7 +102,7 @@ class ResearchHandler:
     async def do_crystallize(self, args: dict[str, Any], response: Any) -> StepOutcome:
         if self.on_status:
             self.on_status(f"Crystallizing: {str(args.get('category', ''))}…")
-        result = await do_crystallize(args, response)
+        result = await do_crystallize(args, self.memory)
         return StepOutcome(result)
 
     async def get_stage_prompt(self) -> Optional[str]:
