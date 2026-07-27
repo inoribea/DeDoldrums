@@ -34,7 +34,6 @@ export function LiveOutput({ status, findings, challenge, statusLog, latestStatu
 
   const isStreaming = status === "streaming" || status === "starting";
   const isEmpty = findings.length === 0 && !challenge;
-  const hasFindings = findings.length > 0;
   const latestMsg = latestStatus || (statusLog.length > 0 ? statusLog[statusLog.length - 1] : null);
 
   return (
