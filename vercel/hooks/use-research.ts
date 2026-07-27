@@ -13,6 +13,8 @@ import type {
 import { normalizeStage, STAGES } from "@/lib/stages";
 import { useLanguage } from "@/lib/i18n";
 
+const POLL_INTERVAL = 2000;
+
 interface UseResearchState {
   status: ResearchStatus;
   currentStage: StageId | null;
@@ -61,51 +63,106 @@ function summarizeFinding(data: {
 
 export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const findingsCountRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
+  const seenCountRef = useRef(0);
   const { t } = useLanguage();
 
-  const closeStream = useCallback(() => {
-    const es = eventSourceRef.current;
-    if (es) {
-      es.close();
-      eventSourceRef.current = null;
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
   }, []);
 
   const reset = useCallback(() => {
-    closeStream();
+    stopPolling();
     findingsCountRef.current = 0;
+    seenCountRef.current = 0;
     sessionIdRef.current = null;
     setState(INITIAL_STATE);
-  }, [closeStream]);
+  }, [stopPolling]);
 
   const cancel = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid) return;
     try {
       await fetch(`/api/session/${encodeURIComponent(sid)}/cancel`, { method: "POST" });
-    } catch {
-      // best-effort — close locally regardless
-    }
-    closeStream();
+    } catch { /* best-effort */ }
+    stopPolling();
     setState((s) => ({ ...s, status: "complete" as const }));
-  }, [closeStream]);
+  }, [stopPolling]);
+
+  const processMessages = useCallback(
+    (messages: string[]) => {
+      for (let i = seenCountRef.current; i < messages.length; i++) {
+        try {
+          const event = JSON.parse(messages[i]) as Record<string, unknown>;
+
+          if (event.type === "stage_change") {
+            const stage = event.stage as number | string | undefined;
+            const description = event.description as string | undefined;
+            const id = stage != null ? normalizeStage(stage) : null;
+            setState((s) => ({
+              ...s,
+              currentStage: id ?? s.currentStage,
+              stageDescription: description ?? (id ? t(STAGES[id].descriptionKey) : s.stageDescription),
+            }));
+          } else if (event.type === "status") {
+            const message = event.message as string | undefined;
+            if (message) setState((s) => ({ ...s, statusMessage: message }));
+          } else if (event.type === "finding") {
+            findingsCountRef.current++;
+            const { summary, content } = summarizeFinding(event as { summary?: string; content?: string });
+            const finding: LiveFinding = {
+              index: findingsCountRef.current,
+              summary,
+              content,
+              stage: event.stage != null ? String(event.stage) : null,
+            };
+            setState((s) => ({ ...s, findings: [...s.findings, finding] }));
+          } else if (event.type === "challenge_result") {
+            setState((s) => ({
+              ...s,
+              challenge: {
+                status: (event.status as string) || "completed",
+                results: event.results as Record<string, unknown> | undefined,
+              },
+            }));
+          } else if (event.type === "complete") {
+            setState((s) => ({
+              ...s,
+              status: "complete",
+              brief: (event.brief as string) || s.brief || "",
+              finalFindings: (event.findings as FinalFinding[]) || [],
+              confidence: event.confidence as ResearchComplete["confidence"] || null,
+              currentStage: "4",
+              statusMessage: null,
+            }));
+          } else if (event.type === "error") {
+            setState((s) => ({
+              ...s,
+              status: "error",
+              error: (event.message as string) || "Unknown error",
+            }));
+          }
+        } catch { /* skip malformed */ }
+      }
+      seenCountRef.current = messages.length;
+    },
+    [t],
+  );
 
   const start = useCallback(
     async (question: string) => {
       const trimmed = question.trim();
       if (!trimmed) return;
 
-      closeStream();
+      stopPolling();
       findingsCountRef.current = 0;
-      setState({
-        ...INITIAL_STATE,
-        status: "creating",
-        currentStage: "-1",
-        stageDescription: t(STAGES["-1"].descriptionKey),
-      });
+      seenCountRef.current = 0;
+      setState({ ...INITIAL_STATE, status: "creating", currentStage: "-1", stageDescription: t(STAGES["-1"].descriptionKey) });
 
       try {
         const base = window.location.origin;
@@ -114,17 +171,13 @@ export function useResearch(): UseResearchReturn {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question: trimmed }),
         });
-        if (!newResp.ok) {
-          throw new Error(`Failed to create session (${newResp.status})`);
-        }
-        const { sessionId, bridgeUrl } = (await newResp.json()) as { sessionId: string; bridgeUrl?: string };
+        if (!newResp.ok) throw new Error(`Failed to create session (${newResp.status})`);
+
+        const { sessionId } = (await newResp.json()) as { sessionId: string };
         if (!sessionId) throw new Error("Bridge returned no session id");
         sessionIdRef.current = sessionId;
 
-        setState((s) => ({
-          ...s,
-          status: "starting",
-        }));
+        setState((s) => ({ ...s, status: "starting" }));
 
         const startResp = await fetch(
           `${base}/api/session/${encodeURIComponent(sessionId)}/question`,
@@ -134,137 +187,42 @@ export function useResearch(): UseResearchReturn {
             body: JSON.stringify({ question: trimmed }),
           },
         );
-        if (!startResp.ok) {
-          throw new Error(`Failed to start research (${startResp.status})`);
-        }
-
-        // Connect SSE directly to bridge (bypasses Vercel 60s function timeout)
-        const streamUrl = bridgeUrl
-          ? `${bridgeUrl}/session/${encodeURIComponent(sessionId)}/stream`
-          : `/api/research/stream?sid=${encodeURIComponent(sessionId)}`;
-        const es = new EventSource(streamUrl);
-        eventSourceRef.current = es;
+        if (!startResp.ok) throw new Error(`Failed to start research (${startResp.status})`);
 
         setState((s) => ({ ...s, status: "streaming" }));
 
-        es.addEventListener("stage_change", (e: MessageEvent) => {
+        // Poll history every POLL_INTERVAL ms
+        const poll = async () => {
           try {
-            const { stage, description } = JSON.parse(e.data) as {
-              stage: number | string;
-              description?: string;
-            };
-            const id = normalizeStage(stage);
-            setState((s) => ({
-              ...s,
-              currentStage: id ?? s.currentStage,
-              stageDescription:
-                description ??
-                (id ? t(STAGES[id].descriptionKey) : s.stageDescription),
-            }));
-          } catch {
-            /* ignore malformed payloads */
-          }
-        });
-
-        es.addEventListener("status", (e: MessageEvent) => {
-          try {
-            const { message } = JSON.parse(e.data) as { message: string };
-            if (message) setState((s) => ({ ...s, statusMessage: message }));
-          } catch { /* ignore */ }
-        });
-
-        es.addEventListener("finding", (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data) as {
-              summary?: string;
-              content?: string;
-              stage?: string | number;
-            };
-            findingsCountRef.current += 1;
-            const { summary, content } = summarizeFinding(data);
-            const finding: LiveFinding = {
-              index: findingsCountRef.current,
-              stage: data.stage ?? null,
-              summary,
-              content,
-            };
-            setState((s) => ({ ...s, findings: [...s.findings, finding] }));
-          } catch {
-            /* ignore malformed payloads */
-          }
-        });
-
-        es.addEventListener("challenge_result", (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data) as ChallengeResult;
-            setState((s) => ({ ...s, challenge: data }));
-          } catch {
-            /* ignore malformed payloads */
-          }
-        });
-
-        es.addEventListener("complete", (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data) as ResearchComplete;
-            setState((s) => ({
-              ...s,
-              brief: data.brief ?? null,
-              finalFindings: data.findings ?? null,
-              confidence: data.confidence ?? null,
-            }));
-          } catch {
-            /* ignore malformed payloads */
-          }
-        });
-
-        es.addEventListener("error", (e: MessageEvent) => {
-          // Bridge-sent error event (still inside the SSE stream).
-          let message = "Research stream reported an error";
-          if (e.data) {
-            try {
-              const data = JSON.parse(e.data) as { message?: string };
-              if (data.message) message = data.message;
-            } catch {
-              /* keep default */
+            const histResp = await fetch(
+              `${base}/api/session/${encodeURIComponent(sessionId)}/history`,
+            );
+            if (!histResp.ok) return;
+            const data = (await histResp.json()) as { done: boolean; messages: string[] };
+            processMessages(data.messages || []);
+            if (data.done) {
+              stopPolling();
+              setState((s) => {
+                if (s.status !== "complete" && s.status !== "error") {
+                  return { ...s, status: "complete" };
+                }
+                return s;
+              });
             }
-          }
-          setState((s) => ({ ...s, status: "error", error: message }));
-          closeStream();
-        });
-
-        es.addEventListener("done", () => {
-          setState((s) => ({
-            ...s,
-            status: "complete",
-            currentStage: s.currentStage ?? "4",
-          }));
-          closeStream();
-        });
-
-        // Native onerror — fires on connection failure / unexpected close.
-        es.onerror = () => {
-          setState((s) => {
-            // If we already reached a terminal state, don't clobber it.
-            if (s.status === "complete" || s.status === "error") return s;
-            return {
-              ...s,
-              status: "error",
-              error: "SSE connection interrupted",
-            };
-          });
-          closeStream();
+          } catch { /* retry next interval */ }
         };
+
+        pollingRef.current = setInterval(poll, POLL_INTERVAL);
+        void poll(); // immediate first poll
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Unexpected request failure";
+        const message = err instanceof Error ? err.message : "Unexpected request failure";
         setState((s) => ({ ...s, status: "error", error: message }));
-        closeStream();
       }
     },
-    [closeStream, t],
+    [stopPolling, processMessages, t],
   );
 
-  useEffect(() => () => closeStream(), [closeStream]);
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   return { ...state, start, cancel, reset };
 }
