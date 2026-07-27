@@ -47,7 +47,7 @@ async def main() -> None:
     """Parse CLI arguments, run the selected mode, then archive the result."""
     args = parse_args()
     config = get_config()
-    client = LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["defaults"]["model"])
+    client = LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["model"])
     if args.goal:
         brief = await _run_goal_mode(client, args.question, args.budget, args.max_turns)
     else:

@@ -26,8 +26,11 @@ def get_config() -> dict[str, Any]:
     if "OPENAI_BASE_URL" not in os.environ:
         LOGGER.warning("OPENAI_BASE_URL is not set; using the OpenAI default endpoint.")
 
+    model = os.getenv("OPENAI_MODEL", DEFAULTS["model"])
+
     return {
         "api_key": api_key,
         "base_url": base_url,
+        "model": model,
         "defaults": DEFAULTS.copy(),
     }

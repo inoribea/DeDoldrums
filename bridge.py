@@ -36,7 +36,7 @@ _FRONTEND_DIR = pathlib.Path(__file__).resolve().parent / "vercel"
 
 def _new_llm_client() -> LLMClient:
     config = get_config()
-    return LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["defaults"]["model"])
+    return LLMClient(api_key=config["api_key"], base_url=config["base_url"], model=config["model"])
 
 
 @dataclass
