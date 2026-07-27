@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ResearchAgent — 多视角研究助手</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --amber: #d2991d; --red: #f85149;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 2rem 1rem;
+  }
+  .app { width: 100%; max-width: 720px; }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  h1 span { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: .85rem; margin-bottom: 1.5rem; }
+
+  .input-group { display: flex; gap: .5rem; margin-bottom: 1rem; }
+  input[type="text"] {
+    flex: 1; padding: .7rem .9rem; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text);
+    font-size: .95rem; outline: none; transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  button {
+    padding: .7rem 1.4rem; border: none; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: .95rem;
+    font-weight: 500; cursor: pointer; transition: opacity .2s;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:hover:not(:disabled) { opacity: .85; }
+
+  .progress { margin-bottom: 1rem; }
+  .stage-badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .35rem .75rem; border-radius: 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: .82rem; color: var(--muted);
+  }
+  .stage-badge.active { border-color: var(--accent); color: var(--accent); }
+  .stage-badge.done { border-color: var(--green); color: var(--green); }
+  .stage-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .stages { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+
+  .output {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.2rem; min-height: 200px;
+    white-space: pre-wrap; line-height: 1.65; font-size: .9rem;
+    color: var(--text); word-break: break-word;
+  }
+  .output .status { color: var(--muted); }
+  .output .finding { margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--border); }
+  .output .finding-header { color: var(--accent); font-weight: 600; }
+  .confidence-high { color: var(--green); }
+  .confidence-mid { color: var(--amber); }
+  .confidence-low { color: var(--red); }
+
+  .error { color: var(--red); background: rgba(248,81,73,.1); padding: .6rem 1rem; border-radius: 8px; margin-top: .5rem; }
+  .footer { margin-top: 2rem; color: var(--muted); font-size: .75rem; text-align: center; }
+  .footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1><span>🔬</span> ResearchAgent</h1>
+  <p class="subtitle">混合 STORM 多视角研究 — 动态视角发现 × 矛盾映射 × 对抗验证 × 同行评审</p>
+
+  <div class="input-group">
+    <input type="text" id="question" placeholder="输入研究问题…" autofocus>
+    <button id="submit" onclick="startResearch()">开始研究</button>
+  </div>
+
+  <div class="progress">
+    <div class="stages" id="stages"></div>
+  </div>
+  <div class="output" id="output">
+    <span class="status">输入问题后点击"开始研究"，Agent 将从多个视角深度分析。</span>
+  </div>
+  <div class="footer">
+    ResearchAgent v1.0 · 基于 <a href="https://github.com/lsdefine/GenericAgent" target="_blank">GenericAgent</a> +
+    <a href="https://github.com/kamilwpaczce-svg/storm-research-method" target="_blank">STORM</a> ·
+    Bridge 后端需单独启动
+  </div>
+</div>
+
+<script>
+const STAGES = {
+  '-1': '初始化',
+  '0': '视角发现',
+  '1': '多视角扫描',
+  '2': '矛盾映射',
+  '3': '综合合成',
+  '3.5': '对抗验证',
+  '4': '同行评审',
+};
+const STAGE_ORDER = ['-1', '0', '1', '2', '3', '3.5', '4'];
+
+function renderStages(current) {
+  const container = document.getElementById('stages');
+  container.innerHTML = STAGE_ORDER.map(s => {
+    const idx = STAGE_ORDER.indexOf(String(current));
+    const myIdx = STAGE_ORDER.indexOf(s);
+    const cls = myIdx === idx ? 'active' : myIdx < idx ? 'done' : '';
+    return `<span class="stage-badge ${cls}"><span class="dot"></span>${STAGES[s]}</span>`;
+  }).join('');
+}
+
+async function startResearch() {
+  const q = document.getElementById('question').value.trim();
+  if (!q) return;
+  const btn = document.getElementById('submit');
+  const out = document.getElementById('output');
+  btn.disabled = true;
+  btn.textContent = '研究中…';
+  out.innerHTML = '<span class="status">正在创建研究会话…</span>';
+
+  try {
+    const base = window.location.origin;
+    const newResp = await fetch(`${base}/api/session/new`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q }),
+    });
+    if (!newResp.ok) throw new Error(`创建会话失败: ${newResp.status}`);
+    const { sessionId } = await newResp.json();
+
+    out.innerHTML = '<span class="status">会话已创建，正在启动研究…</span>';
+
+    await fetch(`${base}/api/session/${sessionId}/question`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q }),
+    });
+
+    const streamUrl = `/api/research/stream?sid=${sessionId}`;
+    const evtSource = new EventSource(streamUrl);
+    let findingsCount = 0;
+    out.innerHTML = '';
+
+    evtSource.addEventListener('stage_change', e => {
+      const { stage } = JSON.parse(e.data);
+      renderStages(stage);
+      out.innerHTML += `\n<span class="status">📊 进入阶段: ${STAGES[String(stage)] || stage}</span>`;
+      out.scrollTop = out.scrollHeight;
+    });
+
+    evtSource.addEventListener('finding', e => {
+      findingsCount++;
+      const data = JSON.parse(e.data);
+      out.innerHTML += `\n<span class="finding"><span class="finding-header">发现 #${findingsCount}:</span> ${data.summary || data.content?.substring(0, 300)}</span>`;
+      out.scrollTop = out.scrollHeight;
+    });
+
+    evtSource.addEventListener('challenge_result', e => {
+      const data = JSON.parse(e.data);
+      const status = data.status === 'verified' ? '✅ 通过' : '⚠️ 待验证';
+      out.innerHTML += `\n<span class="status">对抗验证: ${status}</span>`;
+      out.scrollTop = out.scrollHeight;
+    });
+
+    evtSource.addEventListener('complete', e => {
+      const { findings } = JSON.parse(e.data);
+      out.innerHTML += `\n\n<strong>✅ 研究完成</strong>`;
+      if (findings?.length) {
+        findings.forEach((f, i) => {
+          const conf = f.confidence || '—';
+          const cls = conf >= 7 ? 'confidence-high' : conf >= 4 ? 'confidence-mid' : 'confidence-low';
+          out.innerHTML += `\n<span class="finding"><span class="${cls}">[置信度: ${conf}/10]</span> ${f.content || f.summary || JSON.stringify(f).substring(0, 200)}</span>`;
+        });
+      }
+      out.scrollTop = out.scrollHeight;
+    });
+
+    evtSource.addEventListener('error', e => {
+      const data = e.data ? JSON.parse(e.data) : { message: '连接异常' };
+      out.innerHTML += `\n<div class="error">研究过程出错: ${data.message || '未知错误'}</div>`;
+      evtSource.close();
+    });
+
+    evtSource.addEventListener('done', () => {
+      evtSource.close();
+    });
+
+    evtSource.onerror = () => {
+      out.innerHTML += `\n<div class="error">SSE 连接中断</div>`;
+      evtSource.close();
+    };
+
+  } catch (err) {
+    out.innerHTML += `\n<div class="error">请求失败: ${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '开始研究';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => renderStages('-1'));
+document.getElementById('question').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startResearch();
+});
+</script>
+</body>
+</html>
