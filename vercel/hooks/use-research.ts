@@ -216,7 +216,9 @@ export function useResearch(): UseResearchReturn {
                 return s;
               });
             }
-          } catch { /* retry next interval */ }
+          } catch (e) {
+            console.warn("[poll] error:", e);
+          }
         };
 
         pollingRef.current = setInterval(poll, POLL_INTERVAL);
