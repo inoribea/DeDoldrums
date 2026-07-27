@@ -1,149 +1,297 @@
-# ResearchAgent
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
+  <img src="https://img.shields.io/badge/lines-~1.7K-lightgrey" alt="~1700 lines">
+</p>
 
-> 基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 哲学 + 混合 [STORM](https://arxiv.org/abs/2402.14207) 多视角研究法的自我进化研究 Agent。
+# 🔬 ResearchAgent
 
-ResearchAgent 将 STORM 的多视角研究管线嵌入 GenericAgent 的执行框架——极简种子（~1,700 行）、4 个知识操作工具、5.5 阶段自动推进、分层记忆自我进化。你只需要提问，Agent 自主发现视角、检索信息、反思分析、对抗验证、合成报告。
+> *Design philosophy — **minimal seed, self-evolving researcher.** Don't preload knowledge, discover it.*
 
----
-
-## 特性
-
-```
-Stage 0   — 动态视角发现（基于检索结果生成该主题独有的分析视角）
-Stage 1   — 多视角扫描（动态视角 + 9 透镜库兜底，独立探索）
-Stage 2   — 矛盾映射（找出视角冲突、共识和盲点）
-Stage 3   — 综合合成（跨视角连接 + 结构化报告）
-Stage 3.5 — 对抗验证闸门（Generator-Verifier 自动压力测试每个关键发现）
-Stage 4   — 同行评审（置信度评分 + 偏见检测 + 缺失视角）
-```
-
-- **极简核心**：4 个工具（`explore` / `reflect` / `challenge` / `crystallize`）覆盖完整研究闭环
-- **动态视角**：不预设固定角色，从主题自身特征推导分析维度（取自原始 STORM 论文）
-- **对抗验证**：每个关键发现自动经过 Generator-Verifier 压力测试（取自 Caesar）
-- **自我进化**：固化突破性洞察为可复用思维 SOP → Goal Mode 持续深挖直到预算耗尽
-- **分层记忆**：L0 元规则 → L1 模式索引 → L2 领域知识 + 图拓扑 → L3 思维 SOP → L4 会话归档
-- **多平台接入**：Bridge + SSE → Telegram / Discord / Vercel Web 通过薄适配层接入
+**ResearchAgent** is a self-evolving research agent built on [GenericAgent](https://github.com/lsdefine/GenericAgent)'s execution philosophy and a hybrid [STORM](https://arxiv.org/abs/2402.14207) multi-perspective methodology. You ask a question. The agent autonomously discovers perspectives, collects evidence, challenges its own conclusions, and synthesizes a research brief — all in ~1,700 lines of Python.
 
 ---
 
-## 快速开始
+<a id="english"></a>
 
-```bash
-# 1. 克隆
-git clone https://github.com/inoribea/ResearchAgent.git
-cd ResearchAgent
+## 🌟 Overview
 
-# 2. 安装最小依赖（4 个包）
-pip install -r requirements.txt
+A GenericAgent studies **computers**. A ResearchAgent studies **topics**. Same skeleton, different tools.
 
-# 3. 配置 LLM API key
-cp .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY
+| GenericAgent | ResearchAgent |
+|:---|:---|
+| 9 computer-control tools (`code_run`, `web_scan`, `file_read`…) | 4 knowledge-operation tools (`explore`, `reflect`, `challenge`, `crystallize`) |
+| Task execution loop | 5.5-stage STORM research pipeline |
+| Self-evolves via task→SOP | Self-evolves via insight→thinking pattern |
+| Goal Mode: create→verify→improve | Goal Mode: explore→verify→deepen |
 
-# 4. 单次研究
-python main.py "WebAssembly 对前端框架生态的长期影响是什么？"
+Instead of preloading "what a good research looks like," ResearchAgent discovers perspectives dynamically, stress-tests every finding through an adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs — growing smarter with every session.
 
-# 5. Goal Mode — 30 分钟持续深挖
-python main.py --goal --budget 30 "量子计算对密码学的真实威胁时间线"
+---
+
+## 📋 Key Features
+
+| Feature | Description |
+|:---|:---|
+| 🧬 **Self-Evolving** | Crystallizes breakthrough insights into L3 thinking SOPs; Goal Mode keeps digging until budget runs out |
+| 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from search results — not hardcoded roles (from original STORM paper) |
+| ⚔️ **Adversarial Gate** | Stage 3.5 auto-challenges every key finding: logic flaws, hidden assumptions, missing evidence, alternative explanations (from Caesar) |
+| 🗺️ **Contradiction Mapping** | Surfaces conflicts between perspectives — where they agree (likely true), where they're all silent (biggest blind spots) |
+| 📊 **Confidence Scoring** | Every finding rated 1-10 with explicit reasoning; weak claims flagged for follow-up |
+| 🧠 **L0-L4 Memory** | Meta-rules → pattern index → domain knowledge + graph edges → thinking SOPs → session archives |
+| 🔌 **Multi-Platform** | One Bridge server → Telegram, Discord, Vercel Web through ~100-line adapters |
+
+---
+
+## 🎯 The 5.5-Stage Pipeline
+
+```
+Stage 0   — Dynamic Lens Discovery    (topic-specific perspectives via search)
+Stage 1   — Multi-Perspective Scan    (5 lenses × independent exploration)
+Stage 2   — Contradiction Map         (conflicts, consensus, blind spots)
+Stage 3   — Synthesis                 (cross-lens connections → structured brief)
+Stage 3.5 — ⚔️ Adversarial Gate       (Generator-Verifier pressure test on every finding)
+Stage 4   — Peer Review               (confidence scores, bias check, missing angles)
 ```
 
-### Bridge 模式（多平台接入）
+> ⚠️ **Stage 3.5 is a gate — not a suggestion.** Every key finding must survive adversarial challenge before entering peer review. If Verifier finds substantive flaws → fix → re-verify. No unverified claims make it through.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
-# 启动研究后端
-python bridge.py    # 监听 http://127.0.0.1:14168
+git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+pip install -r requirements.txt          # 4 dependencies total
+cp .env.example .env                     # fill in OPENAI_API_KEY
 
-# 可选：启动 bot
-python adapters/telegram_bot.py
-python adapters/discord_bot.py
+# Single research session
+python main.py "What is the real timeline for quantum computing to break RSA?"
+
+# Goal Mode — 30 minutes of continuous deep-dive
+python main.py --goal --budget 30 "Comparing feasible AGI governance frameworks"
 ```
 
-### Vercel 前端部署
+### Bridge Mode (multi-platform)
 
 ```bash
-cd adapters/vercel
-npm install
-# 在 Vercel 设置环境变量: BRIDGE_URL, BRIDGE_API_KEY
+python bridge.py                         # http://127.0.0.1:14168
+python adapters/telegram_bot.py          # optional
+python adapters/discord_bot.py           # optional
+```
+
+### Vercel Frontend
+
+```bash
+cd adapters/vercel && npm install
+# Set BRIDGE_URL + BRIDGE_API_KEY in Vercel dashboard
 npx vercel deploy --prod
 ```
 
 ---
 
-## 架构
+## 🏗️ Architecture
+
+```
+research_agent/
+├── agent_loop.py       # async main loop (LLM → dispatch → stage advance)
+├── handler.py          # tool router + 5.5-stage state machine
+├── tools.py            # explore / reflect / challenge / crystallize
+├── llm.py              # OpenAI-compatible client (httpx, zero framework deps)
+├── memory.py           # L0-L4 layered memory + L2 graph index
+├── lenses.py           # dynamic lens discovery + 9-lens fallback library
+├── prompts.py          # STORM stage prompt templates
+├── goal_mode.py        # continuous self-driven loop (ported from GA)
+├── main.py             # CLI entry
+├── config.py           # env-based config
+├── bridge.py           # aiohttp HTTP+SSE server
+├── launch.py           # one-click: bridge + bots
+└── adapters/           # Telegram / Discord / Vercel thin adapters
+```
+
+### The 4 Knowledge Tools
+
+| Tool | Schema | Does |
+|:---|:---|:---|
+| `explore` | `query` + `source` (web/memory/url) | DuckDuckGo search, local memory search, deep URL reading |
+| `reflect` | `lens` + `focus` | Applies a thinking lens (practitioner/skeptic/economist/...) to analyze findings |
+| `challenge` | `target` + `mode` | Adversarial pressure test: logic flaws, hidden assumptions, missing evidence, alternatives |
+| `crystallize` | `insight` + `category` | Persists breakthrough patterns into layered memory for future reuse |
+
+---
+
+## 📚 Methodology
+
+ResearchAgent fuses three lines of work:
+
+| Source | What We Took | Reference |
+|:---|:---|:---|
+| **GenericAgent** | Execution framework | [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent) |
+| **STORM (original)** | Dynamic perspective discovery | [Shao et al., NAACL 2024](https://arxiv.org/abs/2402.14207) |
+| **STORM (community)** | 4-stage framework + contradiction mapping + peer review | [storm-research-method](https://github.com/kamilwpaczce-svg/storm-research-method) |
+| **Caesar** | Generator-Verifier adversarial loop + graph-structured knowledge | Liang et al., 2026 |
+
+> The original STORM paper outputs Wikipedia-style articles. The community fork invented contradiction mapping, peer review, and confidence scoring — mechanisms the original paper acknowledged as missing. This project goes further: dynamic lenses (from original STORM), adversarial gate (from Caesar), graph-indexed memory.
+
+---
+
+## 🙏 Acknowledgments
+
+Built on the shoulders of [**GenericAgent**](https://github.com/lsdefine/GenericAgent) — the `StepOutcome`-dispatch pattern, Goal Mode self-driven loop, and layered memory design are directly ported from GA. Its proof that ~3K lines can cover full computer control inspired this project's minimalist approach.
+
+Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for the core insight of multi-perspective analysis breaking single-viewpoint blindness, and the community fork for inventing the contradiction-mapping + peer-review mechanisms.
+
+Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework that became Stage 3.5.
+
+---
+
+## 📄 License
+
+[MIT](LICENSE)
+
+---
+
+<a id="-中文"></a>
+
+# 🔬 ResearchAgent
+
+> *设计哲学 — **极简种子，自我进化。** 不预装知识，去发现知识。*
+
+**ResearchAgent** 是一个基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 执行哲学与混合 [STORM](https://arxiv.org/abs/2402.14207) 多视角方法论的自我进化研究 Agent。你只需提问，Agent 自主发现视角、收集证据、挑战自身结论、合成研究简报——全部在 ~1,700 行 Python 中完成。
+
+---
+
+## 🌟 项目简介
+
+GenericAgent 研究**计算机**。ResearchAgent 研究**议题**。同一副骨架，不同的工具。
+
+| GenericAgent | ResearchAgent |
+|:---|:---|
+| 9 个计算机控制工具 | 4 个知识操作工具 |
+| 任务执行循环 | 5.5 阶段 STORM 研究管线 |
+| 任务→SOP 自我进化 | 洞察→思维模式 自我进化 |
+| Goal Mode: 创造→检验→改进 | Goal Mode: 探索→检验→深化 |
+
+我们不预设"好研究长什么样"——视角从主题自身特征中动态发现，每个关键断言经过对抗闸门压力测试，突破性洞察固化为可复用思维 SOP，每次研究都在进化。
+
+---
+
+## 📋 核心特性
+
+| 特性 | 说明 |
+|:---|:---|
+| 🧬 **自我进化** | 突破性洞察固化为 L3 思维 SOP；Goal Mode 持续深挖直到预算耗尽 |
+| 🔍 **动态视角** | 从搜索结果中动态发现特定主题的分析视角——不预设固定角色（取自原始 STORM 论文） |
+| ⚔️ **对抗闸门** | Stage 3.5 对每个关键发现自动挑战：逻辑漏洞、隐藏假设、缺失证据、替代解释（取自 Caesar） |
+| 🗺️ **矛盾映射** | 找出视角间冲突——哪些一致（很可能为真），哪些全员沉默（整个领域的盲点） |
+| 📊 **置信度评分** | 每个发现标注 1-10 分并说明理由；低置信度断言标记待验证 |
+| 🧠 **L0-L4 记忆** | 元规则 → 模式索引 → 领域知识 + 图拓扑 → 思维 SOP → 会话归档 |
+| 🔌 **多平台接入** | 一个 Bridge 服务器 → Telegram、Discord、Vercel Web 通过 ~100 行薄适配层接入 |
+
+---
+
+## 🎯 5.5 阶段研究管线
+
+```
+Stage 0   — 动态视角发现    （基于检索结果生成该主题独有的分析维度）
+Stage 1   — 多视角扫描      （动态视角 + 9 透镜库兜底，独立探索）
+Stage 2   — 矛盾映射        （视角冲突、共识区域、集体盲点）
+Stage 3   — 综合合成        （跨视角连接 → 结构化研究简报）
+Stage 3.5 — ⚔️ 对抗验证闸门  （Generator-Verifier 自动压力测试每个关键发现）
+Stage 4   — 同行评审        （置信度评分 + 偏见检测 + 缺失视角）
+```
+
+> ⚠️ **Stage 3.5 是闸门，不是建议。** 每个关键发现必须挺过对抗性挑战才能进入同行评审。Verifier 发现实质性漏洞 → 修正论证 → 重新验证。未经验证的断言不得通过。
+
+---
+
+## 🚀 快速开始
+
+```bash
+git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+pip install -r requirements.txt          # 总共 4 个依赖
+cp .env.example .env                     # 填入 OPENAI_API_KEY
+
+# 单次研究
+python main.py "量子计算对 RSA 的真实威胁时间线是什么？"
+
+# Goal Mode — 30 分钟持续深挖
+python main.py --goal --budget 30 "比较可行的 AGI 治理框架"
+```
+
+### Bridge 模式（多平台接入）
+
+```bash
+python bridge.py                         # 监听 http://127.0.0.1:14168
+python adapters/telegram_bot.py          # 可选
+python adapters/discord_bot.py           # 可选
+```
+
+### Vercel 前端部署
+
+```bash
+cd adapters/vercel && npm install
+# 在 Vercel 控制台设置 BRIDGE_URL + BRIDGE_API_KEY
+npx vercel deploy --prod
+```
+
+---
+
+## 🏗️ 架构
 
 ```
 research_agent/
 ├── agent_loop.py       # 异步主循环（LLM 决策 → 工具调度 → 阶段推进）
-├── handler.py          # 工具路由 + 5.5 阶段状态机（-1→0→1→2→3→3.5→4）
-├── tools.py            # 4 个知识工具：explore / reflect / challenge / crystallize
-├── llm.py              # OpenAI 兼容 LLM 客户端（httpx，无框架依赖）
-├── memory.py           # L0-L4 分层记忆 + L2 图结构索引
+├── handler.py          # 工具路由 + 5.5 阶段状态机
+├── tools.py            # explore / reflect / challenge / crystallize
+├── llm.py              # OpenAI 兼容客户端（httpx，零框架依赖）
+├── memory.py           # L0-L4 分层记忆 + L2 图索引
 ├── lenses.py           # 动态视角发现 + 9 透镜库兜底
 ├── prompts.py          # STORM 各阶段 prompt 模板
-├── goal_mode.py        # 持续自驱循环（移植自 GA reflect/goal_mode.py）
+├── goal_mode.py        # 持续自驱循环（移植自 GA）
 ├── main.py             # CLI 入口
 ├── config.py           # 环境变量配置
-├── bridge.py           # aiohttp HTTP+SSE Bridge
+├── bridge.py           # aiohttp HTTP+SSE 服务器
 ├── launch.py           # 一键启动 bridge + bot
-├── adapters/           # Telegram / Discord / Vercel 适配层
-├── memory/             # 记忆存储目录（L0 规则 / L1 索引 / L2 知识 / L3 SOP / L4 归档）
-└── requirements.txt    # openai, httpx, beautifulsoup4, aiohttp
+└── adapters/           # Telegram / Discord / Vercel 薄适配层
 ```
 
 ### 4 个知识工具
 
-| 工具 | 作用 | STORM 对应 |
-|------|------|-----------|
-| `explore` | 多层检索：Web 搜索 / 记忆库 / URL 深度阅读 | 信息收集 |
-| `reflect` | 切换透镜审视发现 | 多视角分析 |
-| `challenge` | 对抗压力测试（逻辑漏洞 / 隐藏假设 / 缺失证据 / 替代解释） | 矛盾验证 |
-| `crystallize` | 固化洞察到记忆（领域知识 / 思维模式 / 透镜组合 / 雷区） | 自我进化 |
+| 工具 | 参数 | 功能 |
+|:---|:---|:---|
+| `explore` | `query` + `source`（web/memory/url） | DuckDuckGo 搜索、记忆库检索、URL 深度阅读 |
+| `reflect` | `lens` + `focus` | 切换思维透镜（实践者/怀疑论/经济学家/…）深度分析 |
+| `challenge` | `target` + `mode` | 对抗压力测试：逻辑漏洞、隐藏假设、缺失证据、替代解释 |
+| `crystallize` | `insight` + `category` | 将突破性洞察固化到分层记忆，供未来复用 |
 
 ---
 
-## 方法论来源
+## 📚 方法论
 
-ResearchAgent 采用**混合路线**，融合了三方方法论：
+ResearchAgent 融合了三方工作：
 
-| 来源 | 贡献 | 说明 |
-|------|------|------|
-| **GenericAgent** | 执行框架 | 极简种子 + StepOutcome-dispatch 模式 + Goal Mode 自驱循环 |
-| **原始 STORM 论文** | 动态视角发现 | Shao et al., *NAACL 2024*. [arXiv:2402.14207](https://arxiv.org/abs/2402.14207) |
-| **STORM 社区衍生版** | 4 阶段框架 | [kamilwpaczce-svg/storm-research-method](https://github.com/kamilwpaczce-svg/storm-research-method) — 矛盾映射 + 同行评审 |
-| **Caesar** | 对抗验证 + 图搜索 | Liang et al., 2026. Generator-Verifier 闸门 + 发现间拓扑关系 |
+| 来源 | 取什么 | 参考 |
+|:---|:---|:---|
+| **GenericAgent** | 执行框架 | [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent) |
+| **STORM（原始论文）** | 动态视角发现 | [Shao et al., NAACL 2024](https://arxiv.org/abs/2402.14207) |
+| **STORM（社区衍生版）** | 4 阶段框架 + 矛盾映射 + 同行评审 | [storm-research-method](https://github.com/kamilwpaczce-svg/storm-research-method) |
+| **Caesar** | Generator-Verifier 对抗循环 + 图结构知识 | Liang et al., 2026 |
 
-> 原始 STORM 论文输出 Wikipedia 风格文章；社区衍生版发明了原始论文没有的矛盾映射/同行评审/置信度评分机制，输出决策者导向的研究简报。本项目的混合路线在社区版基础上进一步升级——视角发现改为动态（取原始 STORM 之长），新增 Stage 3.5 对抗验证闸门（取 Caesar 之长），记忆层增加图结构索引。
-
-### 与 GenericAgent 的对比
-
-| 维度 | GenericAgent | ResearchAgent |
-|------|:--:|:--:|
-| 核心循环 | Perceive→Reason→Execute→Memory | Question→Discover→Explore→Reflect→Challenge→Verify→Crystallize |
-| 工具数 | 9（计算机控制） | 4（知识操作） |
-| 研究阶段 | — | 5.5 阶段 |
-| 视角来源 | — | 动态发现 + 透镜库兜底 |
-| 对抗验证 | — | Stage 3.5 闸门 |
-| 自我进化 | 任务路径→SOP | 研究路径→思维模式 |
-| 记忆系统 | L1-L4（任务导向） | L0-L4 + L2 图索引（知识导向） |
-| Goal Mode | 创造→检验→改进 | 探索→检验→深化 |
-| 代码量 | ~3K 行（核心） | ~1.7K 行 |
+> 原始 STORM 论文输出 Wikipedia 风格文章；社区衍生版发明了原始论文承认缺失的矛盾映射、同行评审、置信度评分机制。本项目进一步升级：动态视角（取原始 STORM 之长）、对抗验证闸门（取 Caesar 之长）、图结构记忆索引。
 
 ---
 
-## 致谢
+## 🙏 致谢
 
-本项目深受 [GenericAgent](https://github.com/lsdefine/GenericAgent) 的极简哲学和工程实践启发——3K 行代码覆盖完整计算机控制 Agent，证明了"极简种子 + 自我进化"的可行性。`agent_loop.py` 的 StepOutcome-dispatch 模式、Goal Mode 的自驱循环、分层记忆设计均直接移植自 GenericAgent。
+站在 [**GenericAgent**](https://github.com/lsdefine/GenericAgent) 的肩膀上——`StepOutcome`-dispatch 模式、Goal Mode 自驱循环、分层记忆设计均直接移植自 GA。它以 ~3K 行代码覆盖完整计算机控制，证明了极简路线的可行性，启发了本项目的设计哲学。
 
-感谢 [STORM 论文](https://arxiv.org/abs/2402.14207)（Shao et al., 2024）提出的动态视角发现和多视角分析的核心洞察，以及 STORM 社区衍生版发明了矛盾映射、同行评审、置信度评分等实用机制。
+感谢 [**STORM 论文**](https://arxiv.org/abs/2402.14207)（Shao et al., NAACL 2024）提出的多视角分析突破单一视角盲点的核心洞察，以及社区衍生版发明了矛盾映射与同行评审机制。
 
-感谢 Caesar（Liang et al., 2026）的 Generator-Verifier 对抗验证框架，直接启发了 Stage 3.5 闸门设计和 L2 图结构索引。
-
----
-
-## 许可
-
-[MIT](LICENSE) — 与 GenericAgent 保持一致。
+感谢 **Caesar**（Liang et al., 2026）的 Generator-Verifier 对抗验证框架，直接成为 Stage 3.5 闸门的设计基础。
 
 ---
 
-*设计哲学：极简种子 + 自我进化 + 动态多视角 + 对抗性验证。*
+## 📄 许可
+
+[MIT](LICENSE)
