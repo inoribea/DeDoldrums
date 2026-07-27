@@ -95,9 +95,23 @@ def get_lens(key: str) -> dict[str, Any]:
     return LENS_LIBRARY[key]
 
 
-async def discover_lenses(question: str, llm_client: ChatClient) -> list[dict[str, Any]]:
-    """Discover research-specific lenses, then add library lenses for coverage gaps."""
-    prompt = f"""研究问题: {question}
+async def discover_lenses(
+    question: str, llm_client: ChatClient, search_results: list[dict[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Discover research-specific lenses, then add library lenses for coverage gaps.
+
+    If *search_results* are provided, they are included as context so the LLM
+    can derive perspectives from actual search snippets rather than guessing.
+    """
+    context_block = ""
+    if search_results:
+        snippets = "\n".join(
+            f"- {r.get('title', '')}: {r.get('snippet', '')[:200]}"
+            for r in search_results[:5]
+        )
+        context_block = f"\n\n相关材料概览:\n{snippets}"
+
+    prompt = f"""研究问题: {question}{context_block}
 
 识别研究这个问题需要的 3-5 个关键视角。每个视角必须覆盖不同的利益相关者或分析维度，
 彼此互补而不重复，并且至少包含一个挑战主流观点的视角。

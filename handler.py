@@ -15,7 +15,7 @@ try:
         STAGE35_ADVERSARIAL_GATE,
         STAGE4_PEER_REVIEW,
     )
-    from .tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
+    from .tools import do_challenge, do_crystallize, do_explore, do_reflect, web_search  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - direct script execution path.
     from lenses import discover_lenses  # pyright: ignore[reportMissingImports]
     from memory import MemoryStore
@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - direct script execution path.
         STAGE35_ADVERSARIAL_GATE,
         STAGE4_PEER_REVIEW,
     )
-    from tools import do_challenge, do_crystallize, do_explore, do_reflect  # pyright: ignore[reportMissingImports]
+    from tools import do_challenge, do_crystallize, do_explore, do_reflect, web_search  # pyright: ignore[reportMissingImports]
 
 
 @dataclass
@@ -113,7 +113,13 @@ class ResearchHandler:
                 self.on_status("Stage 0: Discovering perspectives…")
             if self.on_stage:
                 self.on_stage(0, "动态视角发现")
-            self.dynamic_lenses = await discover_lenses(self.question, self.llm)
+            # Search web for context before lens discovery
+            search_results: list[dict[str, str]] = []
+            try:
+                search_results = await web_search(self.question, max_results=5)
+            except Exception:
+                pass  # if search fails, proceed without context
+            self.dynamic_lenses = await discover_lenses(self.question, self.llm, search_results)
             self.stage = 0
             return f"""[研究阶段 0/4: 动态视角发现]
 
