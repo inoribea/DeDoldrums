@@ -43,6 +43,7 @@ export default function Home() {
     status === "creating" || status === "starting" || status === "streaming";
   const isComplete = status === "complete";
   const showError = status === "error";
+  const isCancelled = status === "cancelled";
 
   const canSubmit = question.trim().length > 0 && !isBusy;
 

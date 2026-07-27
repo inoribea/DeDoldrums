@@ -117,7 +117,7 @@ export function useResearch(): UseResearchReturn {
     } catch { /* best-effort */ }
     stopPolling();
     clearSession();
-    setState((s) => ({ ...s, status: "complete" as const }));
+    setState((s) => ({ ...s, status: "cancelled" as const }));
   }, [stopPolling]);
 
   const processMessages = useCallback(

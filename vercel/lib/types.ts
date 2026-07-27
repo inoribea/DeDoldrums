@@ -36,4 +36,5 @@ export type ResearchStatus =
   | "starting"
   | "streaming"
   | "complete"
+  | "cancelled"
   | "error";
