@@ -142,12 +142,10 @@ class ResearchBridge:
                 logger.warning("Brief is suspiciously short: %r", brief)
             if session.cancelled.is_set():
                 return
-            session.add_event("stage_change", {"stage": 3.5, "description": self._stage_name(3.5)})
             session.add_event("challenge_result", {
                 "results": getattr(session.handler, "adversarial_results", {}),
                 "status": "completed",
             })
-            session.add_event("stage_change", {"stage": 4, "description": self._stage_name(4)})
             session.add_event("finding", {"content": brief})
             # Transform handler findings into displayable format
             displayable = []

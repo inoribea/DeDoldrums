@@ -50,8 +50,16 @@ def format_memories(memories: Sequence[dict[str, Any]]) -> str:
     entries: list[str] = []
     for memory in memories:
         layer = memory.get("layer", "memory")
-        content = memory.get("content", memory.get("insight", str(memory)))
-        entries.append(f"[{layer}] {content}")
+        # memory.search returns different shapes per layer:
+        # L1 index: {"layer":"L1","type":"pattern_index","matches":[...]}
+        # file-based: {"layer":"L2_domain","file":"...","snippet":"..."}
+        if "snippet" in memory:
+            entries.append(f"[{layer}] {memory['file']}: {memory['snippet'][:300]}")
+        elif "matches" in memory:
+            for m in memory["matches"][:3]:
+                entries.append(f"[{layer}] {m.get('trigger','')}: {m.get('insight_summary','')[:200]}")
+        else:
+            entries.append(f"[{layer}] {str(memory)[:200]}")
     return "\n".join(entries)
 
 
@@ -122,11 +130,17 @@ async def research_loop(
             messages.append({"role": "user", "content": stage_prompt})
 
         response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
+
+        # Final report trigger: stage >= 4 and agent has stopped calling tools (or we force it)
+        reached_end = handler.stage >= 4 and handler.findings
+        if not response.tool_calls and reached_end:
+            _status("Composing final report…")
+            messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
+            final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
+            return final_response.content
+
         if not response.tool_calls:
-            if handler.stage >= 4:
-                _status("Composing final report…")
-                final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
-                return final_response.content
+            # Agent stopped calling tools but research isn't done yet — let it think
             continue
 
         # Append assistant message with tool_calls before tool results

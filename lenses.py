@@ -67,6 +67,13 @@ LENS_LIBRARY: dict[str, dict[str, Any]] = {
         "blind_spot": "可能无法区分「专家共识」和「领域内争议」",
         "temperature": 0.7,
     },
+    "systems_thinking": {
+        "name": "系统思维",
+        "identity": "你把研究对象看作一个相互关联的系统。你关注的是反馈回路、涌现性质和杠杆点。",
+        "concerns": "反馈回路、延迟效应、非线性关系、边界条件、意外后果",
+        "blind_spot": "可能过度抽象化，忽视个体能动性和具体案例",
+        "temperature": 0.7,
+    },
 }
 
 
