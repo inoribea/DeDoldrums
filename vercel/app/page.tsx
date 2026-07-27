@@ -38,7 +38,6 @@ export default function Home() {
 
   // Restore saved question on reconnect
   const displayQuestion = question || savedQuestion || "";
-  const showReconnect = !!savedQuestion && status === "streaming" && !question;
 
   const isBusy =
     status === "creating" || status === "starting" || status === "streaming";
