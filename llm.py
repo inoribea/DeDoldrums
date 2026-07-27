@@ -99,6 +99,34 @@ def _normalize_messages(messages: Sequence[Mapping[str, Any]] | str) -> list[dic
     return [dict(m) if isinstance(m, Mapping) else {"role": "user", "content": str(m)} for m in messages]
 
 
+def _parse_tool_calls(message: Mapping[str, Any]) -> list[ToolCall]:
+    """Extract normalized ToolCall objects from a chat-completions message."""
+    raw_calls = message.get("tool_calls", [])
+    if not isinstance(raw_calls, list):
+        raw_calls = []
+
+    legacy_call = message.get("function_call")
+    if isinstance(legacy_call, dict):
+        raw_calls.append({"id": "legacy_function_call", "function": legacy_call})
+
+    tool_calls: list[ToolCall] = []
+    for index, raw_call in enumerate(raw_calls):
+        if not isinstance(raw_call, dict) or not isinstance(raw_call.get("function"), dict):
+            continue
+        function = raw_call["function"]
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        arguments = function.get("arguments", "{}")
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments, ensure_ascii=False)
+        tool_calls.append(ToolCall(
+            id=str(raw_call.get("id") or f"tool_call_{index}"),
+            function=FunctionCall(name=name, arguments=arguments),
+        ))
+    return tool_calls
+
+
 def _parse_chat_response(data: Mapping[str, Any] | None) -> ChatResponse:
     """Parse a standard ``/chat/completions`` response."""
     if not data:
