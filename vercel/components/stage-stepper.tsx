@@ -75,11 +75,6 @@ export function StageStepper({ currentStage, isComplete }: StageStepperProps) {
                 )}
               >
                 {t(meta.labelKey)}
-                {id === "3.5" && (
-                  <span className="ml-1.5 text-[10px] uppercase tracking-wider text-warning">
-                    {t("stage.3.5.gate")}
-                  </span>
-                )}
               </span>
               <span className="mt-0.5 text-xs text-muted-foreground">
                 {t(meta.descriptionKey)}
