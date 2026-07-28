@@ -41,6 +41,11 @@ FINAL_REPORT_PROMPT = (
     "隐藏连接、可操作建议、前沿问题和已知局限。"
 )
 
+FINAL_REPORT_RETRY_PROMPT = (
+    "Your prior final-report response was empty. Return the complete research brief now, "
+    "with a non-empty summary, key findings, confidence, recommendations, and limitations."
+)
+
 MAX_CONSECUTIVE_NO_TOOL_RESPONSES = 3
 
 
@@ -126,6 +131,33 @@ async def research_loop(
         {"role": "user", "content": refined_question},
     ]
 
+    async def compose_final_brief() -> str:
+        messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
+        final_response = await llm_client.chat(
+            messages=messages,
+            tools=[],
+            role="conversational",
+        )
+        if final_response.error:
+            raise RuntimeError(f"Final research brief failed: {final_response.error}")
+        brief = final_response.content.strip()
+        if brief:
+            return brief
+
+        _status("Final research brief was empty; retrying…")
+        messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
+        retry_response = await llm_client.chat(
+            messages=messages,
+            tools=[],
+            role="conversational",
+        )
+        if retry_response.error:
+            raise RuntimeError(f"Final research brief retry failed: {retry_response.error}")
+        brief = retry_response.content.strip()
+        if not brief:
+            raise RuntimeError("Final research brief was empty after retry.")
+        return brief
+
     consecutive_no_tool_responses = 0
 
     for turn in range(1, max_turns + 1):
@@ -145,9 +177,7 @@ async def research_loop(
             _status("Composing final report…")
             if response.content:
                 messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
-            final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
-            return final_response.content
+            return await compose_final_brief()
 
         if not response.tool_calls:
             consecutive_no_tool_responses += 1
@@ -206,8 +236,6 @@ async def research_loop(
 
         if handler.stage >= 4 and handler.findings and turn > 5:
             _status("Generating final research brief…")
-            messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
-            final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
-            return final_response.content
+            return await compose_final_brief()
 
     return "Research reached the maximum turn limit."

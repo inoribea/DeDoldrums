@@ -55,6 +55,40 @@ class ResearchLoopTests(unittest.TestCase):
             )
         )
 
+    def test_empty_final_brief_retries_once(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(content=""),
+            ChatResponse(content="Recovered final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertEqual(brief, "Recovered final research brief")
+        self.assertEqual(len(client.requests), 4)
+
+    def test_empty_final_brief_after_retry_raises(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(content="   "),
+            ChatResponse(content=""),
+        ])
+
+        with self.assertRaisesRegex(RuntimeError, "empty after retry"):
+            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+    def test_final_brief_error_raises(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(error="provider unavailable"),
+        ])
+
+        with self.assertRaisesRegex(RuntimeError, "Final research brief failed"):
+            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
     def test_thinking_pattern_crystallization_persists_sop_and_index(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             memory = MemoryStore(directory)
