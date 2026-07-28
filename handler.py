@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any, Optional
 
 try:
@@ -188,21 +189,28 @@ class ResearchHandler:
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
-            # Gate requires at least 1 challenge, and no finding still needs revision
+            # The gate requires at least one real challenge. Findings that need revision
+            # remain attached to the session for peer review instead of blocking the
+            # pipeline forever: there is no separate tool that can transition them back.
             if len(self.adversarial_results) == 0:
                 return None  # agent hasn't called challenge yet — keep waiting
-            pending = [
-                key
-                for key, value in self.adversarial_results.items()
+            self.stage = 4
+            if self.on_status:
+                self.on_status("Stage 4: Peer review…")
+            if self.on_stage:
+                self.on_stage(4, "同行评审")
+            unresolved = {
+                target: value
+                for target, value in self.adversarial_results.items()
                 if value.get("status") == "needs_revision"
-            ]
-            if not pending:
-                self.stage = 4
-                if self.on_status:
-                    self.on_status("Stage 4: Peer review…")
-                if self.on_stage:
-                    self.on_stage(4, "同行评审")
+            }
+            if not unresolved:
                 return STAGE4_PEER_REVIEW
-            return None
+            review_context = json.dumps(unresolved, ensure_ascii=False)[:4000]
+            return (
+                f"{STAGE4_PEER_REVIEW}\n\n"
+                "以下对抗验证发现仍待修订。必须在同行评审中逐项处理：\n"
+                f"{review_context}"
+            )
 
         return None
