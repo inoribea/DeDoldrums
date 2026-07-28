@@ -22,9 +22,9 @@
 
 ## 🌟 项目简介
 
-GenericAgent 研究**计算机**。ResearchAgent 研究**议题**。同一副骨架，不同的工具。
+GenericAgent 研究**计算机**。DeDoldrums 研究**议题**。同一副骨架，不同的工具。
 
-| GenericAgent | ResearchAgent |
+| GenericAgent | DeDoldrums |
 |:---|:---|
 | 9 个计算机控制工具 | 4 个知识操作工具 |
 | 任务执行循环 | 5.5 阶段 STORM 研究管线 |
@@ -70,7 +70,7 @@ Stage 4   — 同行评审        （置信度评分、偏见检测、遗漏视�
 ### 方案 A：裸机（Python venv）
 
 ```bash
-git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt                      # 总共 4 个依赖
 cp .env.example .env                                 # 配置 LLM 角色
@@ -94,7 +94,7 @@ python bridge.py                     # → http://127.0.0.1:18765
 ### 方案 B：Docker
 
 ```bash
-git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
 cp .env.example .env
 docker compose up -d                 # → http://localhost:18765
 ```
@@ -177,7 +177,7 @@ research_agent/
 
 ## 📚 方法论
 
-ResearchAgent 融合了四方工作：
+DeDoldrums 融合了四方工作：
 
 | 来源 | 取什么 | 参考 |
 |:---|:---|:---|

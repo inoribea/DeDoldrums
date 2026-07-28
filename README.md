@@ -22,16 +22,16 @@ Built on [GenericAgent](https://github.com/lsdefine/GenericAgent) and inspired b
 
 ## 🌟 Overview
 
-A GenericAgent studies **computers**. A ResearchAgent studies **topics**. Same skeleton, different tools.
+A GenericAgent studies **computers**. A DeDoldrums studies **topics**. Same skeleton, different tools.
 
-| GenericAgent | ResearchAgent |
+| GenericAgent | DeDoldrums |
 |:---|:---|
 | 9 computer-control tools | 4 knowledge-operation tools (`explore`, `reflect`, `challenge`, `crystallize`) |
 | Task execution loop | 5.5-stage STORM research pipeline |
 | Self-evolves via task→SOP | Self-evolves via insight→thinking pattern |
 | Goal Mode: create→verify→improve | Goal Mode: explore→verify→deepen |
 
-Instead of preloading "what good research looks like," ResearchAgent discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs.
+Instead of preloading "what good research looks like," DeDoldrums discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs.
 
 ---
 
@@ -70,7 +70,7 @@ Stage 4   — Peer Review               (confidence scores, bias check, missing 
 ### Option A: Bare Metal (Python venv)
 
 ```bash
-git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt                      # 4 dependencies total
 cp .env.example .env                                 # configure LLM roles
@@ -94,7 +94,7 @@ Open your browser. Type a question. Watch the 5.5-stage pipeline with live statu
 ### Option B: Docker
 
 ```bash
-git clone https://github.com/inoribea/ResearchAgent.git && cd ResearchAgent
+git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
 cp .env.example .env
 docker compose up -d                 # → http://localhost:18765
 ```
@@ -177,7 +177,7 @@ research_agent/
 
 ## 📚 Methodology
 
-ResearchAgent fuses four lines of work:
+DeDoldrums fuses four lines of work:
 
 | Source | What We Took | Reference |
 |:---|:---|:---|
