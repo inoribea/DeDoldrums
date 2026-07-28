@@ -14,7 +14,7 @@ import { normalizeStage, STAGES } from "@/lib/stages";
 import { useLanguage } from "@/lib/i18n";
 
 const POLL_INTERVAL = 2000;
-const LS_SESSION_KEY = "research-agent-session";
+const LS_SESSION_KEY = "dedoldrums-session";
 
 interface UseResearchState {
   status: ResearchStatus;

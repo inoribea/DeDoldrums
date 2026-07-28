@@ -83,7 +83,7 @@ export interface Translations {
 
 const en: Translations = {
   "brand.tag": "hybrid STORM",
-  "brand.title": "ResearchAgent",
+  "brand.title": "DeDoldrums",
   "brand.subtitle":
     "Multi-perspective research powered by hybrid STORM methodology. Dynamic lens discovery, contradiction mapping, adversarial gate, peer review.",
 
@@ -141,7 +141,7 @@ const en: Translations = {
 
 const zh: Translations = {
   "brand.tag": "hybrid STORM",
-  "brand.title": "ResearchAgent",
+  "brand.title": "DeDoldrums",
   "brand.subtitle":
     "基于混合 STORM 方法论的多视角研究。动态视角发现、矛盾映射、对抗验证闸门、同行评审。",
 
@@ -197,7 +197,7 @@ const zh: Translations = {
 
 const DICTIONARIES: Record<Language, Translations> = { en, zh };
 
-const STORAGE_KEY = "research-agent-lang";
+const STORAGE_KEY = "dedoldrums-lang";
 
 interface LanguageContextValue {
   language: Language;

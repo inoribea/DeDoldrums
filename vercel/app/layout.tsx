@@ -19,7 +19,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "ResearchAgent — Multi-perspective research",
+  title: "DeDoldrums — Multi-perspective research",
   description:
     "Multi-perspective research powered by hybrid STORM methodology. Dynamic lens discovery, contradiction mapping, adversarial gate, peer review.",
 };
