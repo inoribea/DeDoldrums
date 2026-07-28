@@ -11,8 +11,8 @@
 # DeDoldrums
 
 > **Know your shore by storm.**  
-> *斑尾鹱穿越台风，靠的不是蛮勇，而是辨明陆地的方位。*  
-> **不逃避不确定性，也不盲目追逐它；带着对岸的判断前行。**
+> *The streaked shearwater survives typhoons not by bravery, but by bearings.*  
+> **Don't flee uncertainty. Don't chase it. Navigate it—with the shore in mind.**
 
 一个将冲突视角淬炼为经得起检验的洞见、以方位感而非蛮勇穿越分歧的自我进化研究 Agent。
 
