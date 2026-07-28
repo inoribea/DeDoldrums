@@ -112,6 +112,8 @@ class ResearchHandler:
         if self.on_status:
             self.on_status(f"Crystallizing: {str(args.get('category', ''))}…")
         result = await do_crystallize(args, self.memory)
+        if self.on_status:
+            self.on_status("Crystallization saved; continuing research…")
         return StepOutcome(result)
 
     async def get_stage_prompt(self) -> Optional[str]:

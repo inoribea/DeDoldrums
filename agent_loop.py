@@ -41,6 +41,8 @@ FINAL_REPORT_PROMPT = (
     "隐藏连接、可操作建议、前沿问题和已知局限。"
 )
 
+MAX_CONSECUTIVE_NO_TOOL_RESPONSES = 3
+
 
 def format_memories(memories: Sequence[dict[str, Any]]) -> str:
     """Render retrieved memory records into concise system-prompt context."""
@@ -124,12 +126,18 @@ async def research_loop(
         {"role": "user", "content": refined_question},
     ]
 
+    consecutive_no_tool_responses = 0
+
     for turn in range(1, max_turns + 1):
         stage_prompt = await handler.get_stage_prompt()
         if stage_prompt:
             messages.append({"role": "user", "content": stage_prompt})
 
+        _status("Requesting the next research action…")
         response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
+
+        if response.error:
+            raise RuntimeError(f"Research model request failed: {response.error}")
 
         # Final report trigger: stage >= 4 and agent has stopped calling tools (or we force it)
         reached_end = handler.stage >= 4 and handler.findings
@@ -140,8 +148,24 @@ async def research_loop(
             return final_response.content
 
         if not response.tool_calls:
-            # Agent stopped calling tools but research isn't done yet — let it think
+            consecutive_no_tool_responses += 1
+            if response.content:
+                messages.append({"role": "assistant", "content": response.content})
+            if consecutive_no_tool_responses >= MAX_CONSECUTIVE_NO_TOOL_RESPONSES:
+                raise RuntimeError(
+                    "Research model stopped issuing tool calls before the pipeline completed."
+                )
+            _status(
+                "Research model returned no action; retrying "
+                f"({consecutive_no_tool_responses}/{MAX_CONSECUTIVE_NO_TOOL_RESPONSES})…"
+            )
+            messages.append({
+                "role": "user",
+                "content": "Continue the research pipeline by calling the next required tool.",
+            })
             continue
+
+        consecutive_no_tool_responses = 0
 
         # Append assistant message with tool_calls before tool results
         # (required by OpenAI/DeepSeek API message ordering)
