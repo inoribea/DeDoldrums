@@ -145,6 +145,8 @@ class ResearchBridge:
             session.handler.on_stage = on_stage
             logger.info("Starting research: %s", session.question[:80])
             brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler))
+            if not isinstance(brief, str) or not brief.strip():
+                raise RuntimeError("Research completed without a final brief.")
             logger.info("Research completed — brief: %d chars, findings: %d",
                         len(brief), len(getattr(session.handler, "findings", [])))
             if len(brief) < 50:

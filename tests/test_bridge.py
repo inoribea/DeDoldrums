@@ -40,6 +40,31 @@ class CompleteEventTests(unittest.TestCase):
         self.assertEqual(completed["confidence"], {"overall": 8})
         memory.archive_session.assert_called_once_with("Question", [{"final_brief": "# Research brief"}])
 
+    def test_blank_research_result_emits_error_without_archiving(self) -> None:
+        async def empty_research(*_: object, **__: object) -> str:
+            return "   "
+
+        memory = Mock()
+        handler = SimpleNamespace(
+            confidence_scores={},
+            findings=[],
+            on_status=None,
+            on_stage=None,
+        )
+        with patch("bridge._new_llm_client", return_value=object()), patch(
+            "bridge.research_loop", new=empty_research
+        ):
+            session = ResearchSession("test", "Question", memory=memory)
+            session.handler = handler
+            ResearchBridge.__new__(ResearchBridge)._run_research(session)
+
+        events = [json.loads(message) for message in session.messages]
+        event_types = [event["type"] for event in events]
+        self.assertIn("error", event_types)
+        self.assertNotIn("challenge_result", event_types)
+        self.assertNotIn("complete", event_types)
+        memory.archive_session.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
