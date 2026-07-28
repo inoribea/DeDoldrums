@@ -161,8 +161,8 @@ export default function Home() {
         </Card>
       )}
 
-      {/* Live output — visible while streaming or once complete */}
-      {(isBusy || isComplete) && !showError && (
+      {/* Live output is execution evidence; completed sessions use the research brief below. */}
+      {isBusy && !showError && (
         <LiveOutput
           status={status}
           findings={findings}
