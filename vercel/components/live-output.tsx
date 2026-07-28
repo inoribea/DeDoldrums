@@ -25,11 +25,9 @@ export function LiveOutput({ status, findings, challenge, statusLog, latestStatu
   const viewportRef = useRef<HTMLDivElement>(null);
   const [thinkingOpen, setThinkingOpen] = useState(true);
 
-  // Auto-scroll.
+  // Auto-scroll to bottom on new content.
   useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    viewportRef.current?.scrollIntoView({ block: "end", behavior: "instant" } as any);
   }, [findings, challenge, statusLog]);
 
   const isStreaming = status === "streaming" || status === "starting";
@@ -54,7 +52,7 @@ export function LiveOutput({ status, findings, challenge, statusLog, latestStatu
       <Separator />
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full">
-          <div ref={viewportRef} className="flex flex-col gap-2.5 p-4">
+          <div className="flex flex-col gap-2.5 p-4">
             {/* Thinking process — collapsible status log */}
             {isStreaming && statusLog.length > 0 && (
               <div className="rounded-md border border-border/60 bg-secondary/20">
@@ -125,6 +123,8 @@ export function LiveOutput({ status, findings, challenge, statusLog, latestStatu
                 {t("live.idle")}
               </p>
             )}
+            {/* Sentinel for auto-scroll */}
+            <div ref={viewportRef} />
           </div>
         </ScrollArea>
       </CardContent>
