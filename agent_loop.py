@@ -66,7 +66,7 @@ def format_memories(memories: Sequence[dict[str, Any]]) -> str:
 async def research_loop(
     llm_client: Any,
     question: str,
-    max_turns: int = 25,
+    max_turns: int = 100,
     on_status: Any = None,
     on_stage: Any = None,
     handler: Any = None,

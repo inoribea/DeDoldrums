@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("question", help="Research question to investigate")
     parser.add_argument("--goal", action="store_true", help="Continue researching until the budget ends")
     parser.add_argument("--budget", type=int, default=30, metavar="MINUTES", help="Goal-mode budget (default: 30)")
-    parser.add_argument("--max-turns", type=int, default=50, help="Maximum LLM turns (default: 50)")
+    parser.add_argument("--max-turns", type=int, default=100, help="Maximum LLM turns (default: 100)")
     args = parser.parse_args()
     if args.budget <= 0 or args.max_turns <= 0:
         parser.error("--budget and --max-turns must be positive")
