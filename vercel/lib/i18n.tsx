@@ -82,7 +82,7 @@ export interface Translations {
 }
 
 const en: Translations = {
-  "brand.tag": "Know your shore",
+  "brand.tag": "Know your shore by storm",
   "brand.title": "DeDoldrums",
   "brand.subtitle":
     "Multi-perspective research powered by hybrid STORM methodology. Dynamic lens discovery, contradiction mapping, adversarial gate, peer review.",
