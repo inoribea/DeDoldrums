@@ -47,6 +47,15 @@ def _new_llm_client():
     return LLMRouter(get_router_config())
 
 
+def _complete_event(brief: str, confidence: Any) -> dict[str, Any]:
+    """Build the client result payload without promoting execution logs to findings."""
+    return {
+        "brief": brief,
+        "findings": [],
+        "confidence": confidence,
+    }
+
+
 @dataclass
 class ResearchSession:
     """State owned by one client-visible research session."""
@@ -146,21 +155,10 @@ class ResearchBridge:
                 "results": getattr(session.handler, "adversarial_results", {}),
                 "status": "completed",
             })
-            session.add_event("finding", {"content": brief})
-            # Transform handler findings into displayable format
-            displayable = []
-            for f in getattr(session.handler, "findings", [])[-10:]:
-                if f.get("type") == "reflection":
-                    analysis = (f.get("data", {}).get("analysis", "") or "")[:200]
-                    displayable.append({"content": f"🔍 {f.get('lens', '')}: {analysis}", "summary": f.get('lens', '')})
-                elif f.get("type") == "exploration":
-                    q = f.get("data", {}).get("query", "")[:100]
-                    displayable.append({"content": f"📖 Search: {q}", "summary": q})
-            session.add_event("complete", {
-                "brief": brief,
-                "findings": displayable,
-                "confidence": getattr(session.handler, "confidence_scores", {}),
-            })
+            session.add_event(
+                "complete",
+                _complete_event(brief, getattr(session.handler, "confidence_scores", {})),
+            )
             session.memory.archive_session(session.question, [{"final_brief": brief}])
         except Exception as exc:  # The event stream remains usable after a failed run.
             logger.error("Research failed: %s", exc, exc_info=True)
