@@ -8,11 +8,15 @@
   <a href="README_zh.md">📖 中文文档</a>
 </p>
 
-# 🔬 ResearchAgent
+# DeDoldrums
 
-> *Design philosophy — **minimal seed, self-evolving researcher.** Don't preload knowledge, discover it.*
+> **Break the doldrums.**  
+> *Fly like a streaked shearwater—toward the eye of the storm.*  
+> **Don't merely weather uncertainty. Follow it to discovery.**
 
-**ResearchAgent** is a self-evolving research agent built on [GenericAgent](https://github.com/lsdefine/GenericAgent)'s execution philosophy and a hybrid [STORM](https://arxiv.org/abs/2402.14207) multi-perspective methodology. You ask a question. The agent autonomously discovers perspectives, collects evidence, challenges its own conclusions, and synthesizes a research brief.
+A self-evolving research agent that turns conflicting perspectives into tested insight.
+
+Built on [GenericAgent](https://github.com/lsdefine/GenericAgent) and inspired by [STORM](https://arxiv.org/abs/2402.14207).
 
 ---
 

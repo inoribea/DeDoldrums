@@ -8,11 +8,15 @@
   <a href="README.md">📖 English</a>
 </p>
 
-# 🔬 ResearchAgent
+# DeDoldrums
 
-> *设计哲学 — **极简种子，自我进化。** 不预装知识，去发现知识。*
+> **Break the doldrums.**  
+> *Fly like a streaked shearwater—toward the eye of the storm.*  
+> **Don't merely weather uncertainty. Follow it to discovery.**
 
-**ResearchAgent** 是一个基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 执行哲学与混合 [STORM](https://arxiv.org/abs/2402.14207) 多视角方法论的自我进化研究 Agent。你只需提问，Agent 自主发现视角、收集证据、挑战自身结论、合成研究简报。
+一个将冲突视角淬炼为经得起检验的洞见，并持续自我进化的研究 Agent。
+
+基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 构建，受 [STORM](https://arxiv.org/abs/2402.14207) 启发。
 
 ---
 
