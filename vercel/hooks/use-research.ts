@@ -196,7 +196,10 @@ export function useResearch(): UseResearchReturn {
         pollCount++;
         fetch(`${base}/api/session/${encodeURIComponent(sid)}/history?_=${Date.now()}`, { method: "POST" })
           .then((r) => {
-            if (!r.ok || stoppedRef.current) return null;
+            if (stoppedRef.current) return null;
+            if (!r.ok) {
+              throw new Error(`History request failed with ${r.status}`);
+            }
             return r.json() as Promise<{ done: boolean; messages: string[] }>;
           })
           .then((data) => {

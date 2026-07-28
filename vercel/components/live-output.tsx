@@ -27,7 +27,7 @@ export function LiveOutput({ status, findings, challenge, statusLog, latestStatu
 
   // Auto-scroll to bottom on new content.
   useEffect(() => {
-    viewportRef.current?.scrollIntoView({ block: "end", behavior: "instant" } as any);
+    viewportRef.current?.scrollIntoView({ block: "end", behavior: "auto" });
   }, [findings, challenge, statusLog]);
 
   const isStreaming = status === "streaming" || status === "starting";
