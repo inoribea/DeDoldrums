@@ -11,10 +11,10 @@
 # DeDoldrums
 
 > **Break the doldrums.**  
-> *Fly like a streaked shearwater—toward the eye of the storm.*  
-> **Don't merely weather uncertainty. Follow it to discovery.**
+> *The streaked shearwater survives typhoons not by bravery, but by bearings.*  
+> **Don't flee uncertainty. Don't chase it. Navigate it—with the shore in mind.**
 
-A self-evolving research agent that turns conflicting perspectives into tested insight.
+A self-evolving research agent that turns conflicting perspectives into tested insight—navigating disagreement with bearings, not bravado.
 
 Built on [GenericAgent](https://github.com/lsdefine/GenericAgent) and inspired by [STORM](https://arxiv.org/abs/2402.14207).
 
@@ -31,7 +31,7 @@ A GenericAgent studies **computers**. A DeDoldrums studies **topics**. Same skel
 | Self-evolves via task→SOP | Self-evolves via insight→thinking pattern |
 | Goal Mode: create→verify→improve | Goal Mode: explore→verify→deepen |
 
-Instead of preloading "what good research looks like," DeDoldrums discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs.
+Instead of preloading "what good research looks like," DeDoldrums discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs. Research suggests that adult streaked shearwaters hold a map sense of where land lies; juveniles, lacking it, are disproportionately wrecked after storms. DeDoldrums builds that map sense for a topic: contradiction maps first, deliberate passage second.
 
 ---
 
