@@ -132,31 +132,53 @@ async def research_loop(
     ]
 
     async def compose_final_brief() -> str:
-        messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
-        final_response = await llm_client.chat(
-            messages=messages,
-            tools=[],
-            role="conversational",
-        )
-        if final_response.error:
-            raise RuntimeError(f"Final research brief failed: {final_response.error}")
-        brief = final_response.content.strip()
-        if brief:
-            return brief
+        # Build a compact message list for the final report call.
+        # After many research turns the full history can overflow the
+        # conversational model's context window. Keep only the
+        # system prompt, original question, and recent assistant outputs
+        # that contain the synthesis and peer review.
+        recent_assistant = [
+            m for m in messages
+            if m.get("role") == "assistant" and m.get("content")
+        ]
+        compact = [
+            messages[0],   # system prompt
+            messages[1],   # original user question
+            *recent_assistant[-8:],  # last 8 assistant outputs (synthesis + peer review)
+        ]
 
-        _status("Final research brief was empty; retrying…")
-        messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
-        retry_response = await llm_client.chat(
-            messages=messages,
-            tools=[],
-            role="conversational",
+        total_chars = sum(len(str(m)) for m in compact)
+        _status(
+            f"Composing final brief ({len(compact)} messages, "
+            f"~{total_chars // 4} estimated tokens)…"
         )
-        if retry_response.error:
-            raise RuntimeError(f"Final research brief retry failed: {retry_response.error}")
-        brief = retry_response.content.strip()
-        if not brief:
-            raise RuntimeError("Final research brief was empty after retry.")
-        return brief
+
+        retry_messages = compact + [{"role": "user", "content": FINAL_REPORT_PROMPT}]
+        for attempt in range(2):
+            response = await llm_client.chat(
+                messages=retry_messages,
+                tools=[],
+                role="conversational",
+            )
+            if response.error:
+                if attempt == 0:
+                    _status(f"Final brief attempt {attempt + 1} failed ({response.error}); retrying…")
+                    messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
+                    retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
+                    continue
+                raise RuntimeError(f"Final research brief failed: {response.error}")
+
+            brief = response.content.strip()
+            if brief:
+                return brief
+
+            if attempt == 0:
+                _status("Final research brief was empty; retrying…")
+                messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
+                retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
+                continue
+
+        raise RuntimeError("Final research brief was empty after retry.")
 
     consecutive_no_tool_responses = 0
 

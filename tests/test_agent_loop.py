@@ -111,10 +111,22 @@ class ResearchLoopTests(unittest.TestCase):
             ChatResponse(content="Refined question"),
             ChatResponse(content="Peer review"),
             ChatResponse(error="provider unavailable"),
+            ChatResponse(error="provider unavailable"),
         ])
 
         with self.assertRaisesRegex(RuntimeError, "Final research brief failed"):
             asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+    def test_final_brief_error_retry_succeeds(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(error="transient error"),
+            ChatResponse(content="Recovered final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+        self.assertEqual(brief, "Recovered final research brief")
 
     def test_thinking_pattern_crystallization_persists_sop_and_index(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

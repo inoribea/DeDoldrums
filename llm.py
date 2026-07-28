@@ -133,7 +133,7 @@ def _parse_tool_calls(message: Mapping[str, Any]) -> list[ToolCall]:
 
 def _parse_chat_response(data: Mapping[str, Any] | None) -> ChatResponse:
     """Parse a standard ``/chat/completions`` response."""
-    if not data:
+    if data is None:
         return ChatResponse(error="Empty API response")
     choices = data.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -165,19 +165,33 @@ class BaseBackend:
         headers: Mapping[str, str],
     ) -> tuple[Mapping[str, Any] | None, str | None]:
         try:
+            # Estimate token count for diagnostic logging.
+            payload_str = json.dumps(payload, ensure_ascii=False)
+            est_tokens = len(payload_str) // 4
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
                     f"{self.base_url}{path}", json=payload, headers=headers
                 )
             if response.is_error:
                 detail = _error_detail(response)
-                LOGGER.warning("LLM %s error: %s", path, detail[:200])
+                LOGGER.warning("LLM %s error (~%d est tokens): %s", path, est_tokens, detail[:200])
                 return None, detail
             data = response.json()
             if not isinstance(data, Mapping):
+                LOGGER.warning(
+                    "LLM %s returned non-object (~%d est tokens): %s",
+                    path, est_tokens, type(data).__name__,
+                )
                 return None, "Invalid API response: expected a JSON object"
+            # Log suspiciously small responses for context-overflow diagnosis.
+            if not data:
+                LOGGER.warning(
+                    "LLM %s returned empty object (~%d est tokens) — possible context overflow",
+                    path, est_tokens,
+                )
             return data, None
         except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
+            LOGGER.warning("LLM %s request failed: %s", path, str(exc)[:200])
             return None, str(exc)
 
     async def chat(
