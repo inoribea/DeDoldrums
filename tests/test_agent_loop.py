@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from agent_loop import research_loop
-from llm import ChatResponse
+from llm import ChatResponse, FunctionCall, ToolCall
 from memory import MemoryStore
 from tools import do_crystallize
 
@@ -27,11 +27,13 @@ class FakeLlmClient:
     def __init__(self, responses: list[ChatResponse]) -> None:
         self.responses = iter(responses)
         self.requests: list[list[dict[str, object]]] = []
+        self.calls: list[tuple[object, object]] = []
 
     async def chat(self, **kwargs: object) -> ChatResponse:
         messages = kwargs.get("messages")
         if isinstance(messages, list):
             self.requests.append(list(messages))
+        self.calls.append((kwargs.get("tools"), kwargs.get("role")))
         return next(self.responses)
 
 
@@ -54,6 +56,31 @@ class ResearchLoopTests(unittest.TestCase):
                 for message in final_request
             )
         )
+        self.assertEqual(client.calls[1], ([], "tool_calling"))
+        self.assertEqual(client.calls[2], ([], "conversational"))
+
+    def test_final_peer_review_rejects_tool_calls(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(tool_calls=[ToolCall(
+                id="unexpected-tool",
+                function=FunctionCall(name="challenge", arguments="{}"),
+            )]),
+        ])
+
+        with self.assertRaisesRegex(RuntimeError, "unexpected tool calls"):
+            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertEqual(client.calls[1], ([], "tool_calling"))
+
+    def test_empty_final_peer_review_raises(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="   "),
+        ])
+
+        with self.assertRaisesRegex(RuntimeError, "peer review was empty"):
+            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
     def test_empty_final_brief_retries_once(self) -> None:
         client = FakeLlmClient([

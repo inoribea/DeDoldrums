@@ -165,19 +165,29 @@ async def research_loop(
         if stage_prompt:
             messages.append({"role": "user", "content": stage_prompt})
 
+        if handler.stage >= 4:
+            _status("Conducting final peer review…")
+            peer_review = await llm_client.chat(
+                messages=messages,
+                tools=[],
+                role="tool_calling",
+            )
+            if peer_review.error:
+                raise RuntimeError(f"Final peer review failed: {peer_review.error}")
+            if peer_review.tool_calls:
+                raise RuntimeError("Final peer review returned unexpected tool calls.")
+            peer_review_text = peer_review.content.strip()
+            if not peer_review_text:
+                raise RuntimeError("Final peer review was empty.")
+            messages.append({"role": "assistant", "content": peer_review_text})
+            _status("Generating final research brief…")
+            return await compose_final_brief()
+
         _status("Requesting the next research action…")
         response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
 
         if response.error:
             raise RuntimeError(f"Research model request failed: {response.error}")
-
-        # Final report trigger: stage >= 4 and agent has stopped calling tools (or we force it)
-        reached_end = handler.stage >= 4 and handler.findings
-        if not response.tool_calls and reached_end:
-            _status("Composing final report…")
-            if response.content:
-                messages.append({"role": "assistant", "content": response.content})
-            return await compose_final_brief()
 
         if not response.tool_calls:
             consecutive_no_tool_responses += 1
@@ -233,9 +243,5 @@ async def research_loop(
                     "content": json.dumps(outcome.data, ensure_ascii=False),
                 }
             )
-
-        if handler.stage >= 4 and handler.findings and turn > 5:
-            _status("Generating final research brief…")
-            return await compose_final_brief()
 
     return "Research reached the maximum turn limit."
