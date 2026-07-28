@@ -82,7 +82,7 @@ export interface Translations {
 }
 
 const en: Translations = {
-  "brand.tag": "hybrid STORM",
+  "brand.tag": "Break the doldrums.",
   "brand.title": "DeDoldrums",
   "brand.subtitle":
     "Multi-perspective research powered by hybrid STORM methodology. Dynamic lens discovery, contradiction mapping, adversarial gate, peer review.",
@@ -140,7 +140,7 @@ const en: Translations = {
 };
 
 const zh: Translations = {
-  "brand.tag": "hybrid STORM",
+  "brand.tag": "Break the doldrums.",
   "brand.title": "DeDoldrums",
   "brand.subtitle":
     "基于混合 STORM 方法论的多视角研究。动态视角发现、矛盾映射、对抗验证闸门、同行评审。",

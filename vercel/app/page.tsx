@@ -184,7 +184,15 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-2 border-t border-border/60 pt-4 text-center text-xs text-muted-foreground">
         <p>
-          {t("brand.title")} · {t("footer.builtOn")}{" "}
+          <a
+            href="https://github.com/inoribea/DeDoldrums"
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary hover:underline"
+          >
+            {t("brand.title")}
+          </a>
+          {" "}· {t("footer.builtOn")}{" "}
           <a
             href="https://github.com/lsdefine/GenericAgent"
             target="_blank"
