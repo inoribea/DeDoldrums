@@ -143,6 +143,8 @@ async def research_loop(
         reached_end = handler.stage >= 4 and handler.findings
         if not response.tool_calls and reached_end:
             _status("Composing final report…")
+            if response.content:
+                messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": FINAL_REPORT_PROMPT})
             final_response = await llm_client.chat(messages=messages, tools=[], role="conversational")
             return final_response.content

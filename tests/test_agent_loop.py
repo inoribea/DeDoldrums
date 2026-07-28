@@ -18,15 +18,43 @@ class FakeHandler:
         return None
 
 
+class FinalReviewHandler(FakeHandler):
+    stage = 4
+    findings = [{"type": "reflection", "data": {}}]
+
+
 class FakeLlmClient:
     def __init__(self, responses: list[ChatResponse]) -> None:
         self.responses = iter(responses)
+        self.requests: list[list[dict[str, object]]] = []
 
-    async def chat(self, **_: object) -> ChatResponse:
+    async def chat(self, **kwargs: object) -> ChatResponse:
+        messages = kwargs.get("messages")
+        if isinstance(messages, list):
+            self.requests.append(list(messages))
         return next(self.responses)
 
 
 class ResearchLoopTests(unittest.TestCase):
+    def test_peer_review_response_is_included_in_final_report_context(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review: revise the timeline claim."),
+            ChatResponse(content="Final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertEqual(brief, "Final research brief")
+        final_request = client.requests[-1]
+        self.assertTrue(
+            any(
+                message.get("role") == "assistant"
+                and message.get("content") == "Peer review: revise the timeline claim."
+                for message in final_request
+            )
+        )
+
     def test_thinking_pattern_crystallization_persists_sop_and_index(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             memory = MemoryStore(directory)
