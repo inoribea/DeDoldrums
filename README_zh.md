@@ -10,11 +10,11 @@
 
 # DeDoldrums
 
-> **Break the doldrums.**  
-> *Fly like a streaked shearwater—toward the eye of the storm.*  
-> **Don't merely weather uncertainty. Follow it to discovery.**
+> **识风知岸。**  
+> *斑尾鹱穿越台风，靠的不是蛮勇，而是辨明陆地的方位。*  
+> **不逃避不确定性，也不盲目追逐它；带着对岸的判断前行。**
 
-一个将冲突视角淬炼为经得起检验的洞见，并持续自我进化的研究 Agent。
+一个将冲突视角淬炼为经得起检验的洞见、以方位感而非蛮勇穿越分歧的自我进化研究 Agent。
 
 基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 构建，受 [STORM](https://arxiv.org/abs/2402.14207) 启发。
 
@@ -31,7 +31,7 @@ GenericAgent 研究**计算机**。DeDoldrums 研究**议题**。同一副骨架
 | 任务→SOP 自我进化 | 洞察→思维模式 自我进化 |
 | Goal Mode: 创造→检验→改进 | Goal Mode: 探索→检验→深化 |
 
-我们不预设"好研究长什么样"——视角从网络搜索结果中动态发现，每个关键断言经过强制对抗闸门压力测试，突破性洞察固化为可复用思维 SOP，每次研究都在进化。
+我们不预设"好研究长什么样"——视角从网络搜索结果中动态发现，每个关键断言经过强制对抗闸门压力测试，突破性洞察固化为可复用思维 SOP。成年斑尾鹱能够判断陆地的方位，缺乏这种方位感的幼鸟更容易在风暴后迷航；DeDoldrums 为议题建立同样的方位感：先画出矛盾地图，再选择审慎的航线。
 
 ---
 
