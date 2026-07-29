@@ -59,12 +59,28 @@ def _message_content_text(message: Mapping[str, Any]) -> str:
     return str(content).strip()
 
 
+def _sanitize_recovered_note(text: str) -> str:
+    sanitized = text.strip()
+    for marker in (
+        "<｜｜DSML｜｜tool_calls>",
+        "<||DSML||tool_calls>",
+        "<tool_calls>",
+    ):
+        marker_index = sanitized.find(marker)
+        if marker_index >= 0:
+            sanitized = sanitized[:marker_index].rstrip()
+    lines = [line for line in sanitized.splitlines() if "DSML" not in line]
+    return "\n".join(lines).strip()
+
+
 def _fallback_final_brief(compact_messages: Sequence[Mapping[str, Any]], reason: str) -> str:
-    notes = [
-        _message_content_text(message)
-        for message in compact_messages
-        if message.get("role") == "assistant" and _message_content_text(message)
-    ]
+    notes: list[str] = []
+    for message in compact_messages:
+        if message.get("role") != "assistant":
+            continue
+        note = _sanitize_recovered_note(_message_content_text(message))
+        if note:
+            notes.append(note)
     if not notes:
         raise RuntimeError(f"Final research brief failed: {reason}")
 

@@ -42,6 +42,7 @@ export function FinalResults({
   if (!brief && (!finalFindings || finalFindings.length === 0)) return null;
 
   const overall = numericConfidence(confidence);
+  const isRecoveredBrief = brief?.startsWith("# Research brief (recovered)") ?? false;
 
   return (
     <Card className="animate-fade-in-up">
@@ -60,6 +61,17 @@ export function FinalResults({
       </CardHeader>
       <Separator />
       <CardContent className="space-y-5 pt-5">
+        {isRecoveredBrief && (
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <div className="mb-1 flex items-center gap-2 font-medium">
+              <Badge variant="warning">{t("results.recoveredLabel")}</Badge>
+            </div>
+            <p className="leading-relaxed text-warning/90">
+              {t("results.recoveredDescription")}
+            </p>
+          </div>
+        )}
+
         {brief && (
           <div className="prose dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-p:leading-relaxed prose-p:text-foreground/90 prose-strong:text-foreground prose-code:rounded prose-code:bg-secondary prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[0.85em] prose-code:font-mono prose-code:text-primary prose-pre:bg-secondary prose-pre:text-foreground/90 prose-a:text-primary prose-li:text-foreground/90 prose-blockquote:border-primary prose-blockquote:text-muted-foreground">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>

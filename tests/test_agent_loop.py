@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from agent_loop import research_loop
+from agent_loop import _fallback_final_brief, research_loop
 from llm import ChatResponse, FunctionCall, ToolCall
 from memory import MemoryStore
 from tools import do_crystallize
@@ -123,6 +123,26 @@ class ResearchLoopTests(unittest.TestCase):
         self.assertIn("Research brief (recovered)", brief)
         self.assertIn("Failure reason: Empty API response", brief)
         self.assertIn("Peer review", brief)
+
+    def test_recovered_brief_removes_tool_call_markup(self) -> None:
+        brief = _fallback_final_brief([
+            {"role": "system", "content": "secret system prompt"},
+            {"role": "user", "content": "question"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Readable synthesis\n"
+                    "<｜｜DSML｜｜tool_calls>"
+                    "<｜｜DSML｜｜invoke name=\"challenge\">machine payload"
+                    "</｜｜DSML｜｜tool_calls>"
+                ),
+            },
+        ], "Empty API response")
+
+        self.assertIn("Readable synthesis", brief)
+        self.assertNotIn("DSML", brief)
+        self.assertNotIn("tool_calls", brief)
+        self.assertNotIn("secret system prompt", brief)
 
     def test_final_brief_error_retry_succeeds(self) -> None:
         client = FakeLlmClient([

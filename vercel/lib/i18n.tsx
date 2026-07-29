@@ -66,6 +66,8 @@ export interface Translations {
   "results.title": string;
   "results.confidence": string;
   "results.keyFindings": string;
+  "results.recoveredLabel": string;
+  "results.recoveredDescription": string;
 
   // Finding item
   "finding.showMore": string;
@@ -127,6 +129,9 @@ const en: Translations = {
   "results.title": "Research brief",
   "results.confidence": "confidence",
   "results.keyFindings": "Key findings",
+  "results.recoveredLabel": "Recovered brief",
+  "results.recoveredDescription":
+    "The final report model failed, so this page shows recovered research notes instead of a polished final synthesis.",
 
   "finding.showMore": "Show more",
   "finding.showLess": "Show less",
@@ -183,6 +188,9 @@ const zh: Translations = {
   "results.title": "研究简报",
   "results.confidence": "置信度",
   "results.keyFindings": "关键发现",
+  "results.recoveredLabel": "恢复版简报",
+  "results.recoveredDescription":
+    "最终简报模型生成失败；这里展示的是已完成研究笔记的恢复版，不是润色后的最终综合。",
 
   "finding.showMore": "展开",
   "finding.showLess": "收起",
