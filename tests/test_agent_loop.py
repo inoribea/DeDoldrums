@@ -95,27 +95,34 @@ class ResearchLoopTests(unittest.TestCase):
         self.assertEqual(brief, "Recovered final research brief")
         self.assertEqual(len(client.requests), 4)
 
-    def test_empty_final_brief_after_retry_raises(self) -> None:
+    def test_empty_final_brief_after_retries_returns_recovered_brief(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
             ChatResponse(content="Peer review"),
             ChatResponse(content="   "),
             ChatResponse(content=""),
+            ChatResponse(content=""),
         ])
 
-        with self.assertRaisesRegex(RuntimeError, "empty after retry"):
-            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
-    def test_final_brief_error_raises(self) -> None:
+        self.assertIn("Research brief (recovered)", brief)
+        self.assertIn("Peer review", brief)
+
+    def test_empty_api_response_after_retries_returns_recovered_brief(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
             ChatResponse(content="Peer review"),
-            ChatResponse(error="provider unavailable"),
-            ChatResponse(error="provider unavailable"),
+            ChatResponse(error="Empty API response"),
+            ChatResponse(error="Empty API response"),
+            ChatResponse(error="Empty API response"),
         ])
 
-        with self.assertRaisesRegex(RuntimeError, "Final research brief failed"):
-            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertIn("Research brief (recovered)", brief)
+        self.assertIn("Failure reason: Empty API response", brief)
+        self.assertIn("Peer review", brief)
 
     def test_final_brief_error_retry_succeeds(self) -> None:
         client = FakeLlmClient([

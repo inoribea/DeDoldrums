@@ -11,7 +11,7 @@ Role-to-model routing (configured via ``LLM_*`` env vars):
 from __future__ import annotations
 
 import json
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 try:
     from .handler import ResearchHandler  # pyright: ignore[reportMissingImports]
@@ -47,6 +47,40 @@ FINAL_REPORT_RETRY_PROMPT = (
 )
 
 MAX_CONSECUTIVE_NO_TOOL_RESPONSES = 3
+FINAL_REPORT_ATTEMPTS = 3
+
+
+def _message_content_text(message: Mapping[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if content is None:
+        return ""
+    return str(content).strip()
+
+
+def _fallback_final_brief(compact_messages: Sequence[Mapping[str, Any]], reason: str) -> str:
+    notes = [
+        _message_content_text(message)
+        for message in compact_messages
+        if message.get("role") == "assistant" and _message_content_text(message)
+    ]
+    if not notes:
+        raise RuntimeError(f"Final research brief failed: {reason}")
+
+    excerpts = "\n\n".join(f"- {note}" for note in notes[-6:])
+    return (
+        "# Research brief (recovered)\n\n"
+        "The final report generator failed after multiple attempts, so this recovered "
+        "brief preserves the completed research and peer-review notes instead of "
+        "discarding the session.\n\n"
+        f"Failure reason: {reason}\n\n"
+        "## Available research notes\n\n"
+        f"{excerpts}\n\n"
+        "## Known limitation\n\n"
+        "This is a fallback brief assembled from completed pipeline outputs; it may be "
+        "less polished than a freshly generated final synthesis."
+    )
 
 
 def format_memories(memories: Sequence[dict[str, Any]]) -> str:
@@ -154,31 +188,39 @@ async def research_loop(
         )
 
         retry_messages = compact + [{"role": "user", "content": FINAL_REPORT_PROMPT}]
-        for attempt in range(2):
+        last_failure = "empty response"
+        for attempt in range(FINAL_REPORT_ATTEMPTS):
             response = await llm_client.chat(
                 messages=retry_messages,
                 tools=[],
                 role="conversational",
             )
             if response.error:
-                if attempt == 0:
+                last_failure = response.error
+                if attempt < FINAL_REPORT_ATTEMPTS - 1:
                     _status(f"Final brief attempt {attempt + 1} failed ({response.error}); retrying…")
                     messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                     retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                     continue
-                raise RuntimeError(f"Final research brief failed: {response.error}")
+                _status(
+                    "Final brief generator failed after retries; "
+                    "returning recovered research notes…"
+                )
+                return _fallback_final_brief(compact, response.error)
 
             brief = response.content.strip()
             if brief:
                 return brief
 
-            if attempt == 0:
+            last_failure = "empty final brief"
+            if attempt < FINAL_REPORT_ATTEMPTS - 1:
                 _status("Final research brief was empty; retrying…")
                 messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                 retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                 continue
 
-        raise RuntimeError("Final research brief was empty after retry.")
+        _status("Final research brief was empty after retries; returning recovered research notes…")
+        return _fallback_final_brief(compact, last_failure)
 
     consecutive_no_tool_responses = 0
 
