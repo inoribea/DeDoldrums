@@ -13,6 +13,7 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 EMPTY_ERROR_DETAIL = "LLM request failed with empty error detail"
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 60.0
 
 
 PROVIDER_REGISTRY = {
@@ -104,6 +105,11 @@ def _normalize_messages(messages: Sequence[Mapping[str, Any]] | str) -> list[dic
     return [dict(m) if isinstance(m, Mapping) else {"role": "user", "content": str(m)} for m in messages]
 
 
+def _request_timeout(read_timeout: float | None = None) -> httpx.Timeout:
+    timeout = read_timeout or DEFAULT_REQUEST_TIMEOUT_SECONDS
+    return httpx.Timeout(DEFAULT_REQUEST_TIMEOUT_SECONDS, read=timeout)
+
+
 def _parse_tool_calls(message: Mapping[str, Any]) -> list[ToolCall]:
     """Extract normalized ToolCall objects from a chat-completions message."""
     raw_calls = message.get("tool_calls", [])
@@ -164,12 +170,13 @@ class BaseBackend:
         path: str,
         payload: Mapping[str, Any],
         headers: Mapping[str, str],
+        timeout: float | None = None,
     ) -> tuple[Mapping[str, Any] | None, str | None]:
         try:
             # Estimate token count for diagnostic logging.
             payload_str = json.dumps(payload, ensure_ascii=False)
             est_tokens = len(payload_str) // 4
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=_request_timeout(timeout)) as client:
                 response = await client.post(
                     f"{self.base_url}{path}", json=payload, headers=headers
                 )
@@ -201,6 +208,7 @@ class BaseBackend:
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         raise NotImplementedError
 
@@ -216,6 +224,7 @@ class ChatBackend(BaseBackend):
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -229,6 +238,7 @@ class ChatBackend(BaseBackend):
             "/chat/completions",
             payload,
             {"Authorization": f"Bearer {self.api_key or ''}"},
+            timeout=timeout,
         )
         if error is not None:
             return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
@@ -243,6 +253,7 @@ class ResponseBackend(BaseBackend):
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -253,7 +264,7 @@ class ResponseBackend(BaseBackend):
             payload["tools"] = list(tools)
 
         data, error = await self._post(
-            "/responses", payload, {"Authorization": f"Bearer {self.api_key or ''}"}
+            "/responses", payload, {"Authorization": f"Bearer {self.api_key or ''}"}, timeout=timeout
         )
         if error is not None:
             return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
@@ -288,6 +299,7 @@ class MessagesBackend(BaseBackend):
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         source = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
         system: list[str] = []
@@ -321,6 +333,7 @@ class MessagesBackend(BaseBackend):
             "/messages",
             payload,
             {"x-api-key": self.api_key or "", "anthropic-version": "2023-06-01"},
+            timeout=timeout,
         )
         if error is not None:
             return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
@@ -353,6 +366,7 @@ class CompletionsBackend(BaseBackend):
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         del tools
         if isinstance(messages, str):
@@ -369,7 +383,7 @@ class CompletionsBackend(BaseBackend):
             "max_tokens": 4096,
         }
         data, error = await self._post(
-            "/completions", payload, {"Authorization": f"Bearer {self.api_key or ''}"}
+            "/completions", payload, {"Authorization": f"Bearer {self.api_key or ''}"}, timeout=timeout
         )
         if error is not None:
             return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
@@ -387,6 +401,7 @@ class V1BetaBackend(BaseBackend):
         messages: Sequence[Mapping[str, Any]] | str,
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
+        timeout: float | None = None,
     ) -> ChatResponse:
         source = [{"role": "user", "content": messages}] if isinstance(messages, str) else messages
         system: list[str] = []
@@ -420,6 +435,7 @@ class V1BetaBackend(BaseBackend):
             f"/models/{self.model}:generateContent",
             payload,
             {"x-goog-api-key": self.api_key or ""},
+            timeout=timeout,
         )
         if error is not None:
             return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
@@ -489,12 +505,13 @@ class LLMRouter:
         tools: Sequence[Mapping[str, Any]] | None = None,
         temperature: float = 0.7,
         role: str = "tool_calling",
+        timeout: float | None = None,
     ) -> ChatResponse:
         config = self.role_configs.get(role)
         if config is None:
             return ChatResponse(error=f"No LLM configuration for role: {role}")
         try:
-            return await self._backend_for(config).chat(messages, tools, temperature)
+            return await self._backend_for(config).chat(messages, tools, temperature, timeout=timeout)
         except (KeyError, TypeError, ValueError) as exc:
             return ChatResponse(error=str(exc))
 
