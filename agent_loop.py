@@ -204,6 +204,50 @@ def format_memories(memories: Sequence[dict[str, Any]]) -> str:
     return "\n".join(entries)
 
 
+def _lens_label(lens: Any) -> str:
+    if isinstance(lens, Mapping):
+        label = lens.get("key") or lens.get("name")
+        return str(label) if label else ""
+    return str(lens) if lens is not None else ""
+
+
+def _no_tool_retry_prompt(handler: Any) -> str:
+    stage = getattr(handler, "stage", None)
+    if stage in (0, 1):
+        dynamic_lenses = getattr(handler, "dynamic_lenses", [])
+        lenses = dynamic_lenses if isinstance(dynamic_lenses, Sequence) else []
+        used = getattr(handler, "lenses_used", set())
+        used_lenses = {str(lens) for lens in used} if isinstance(used, set) else set()
+        unused = [
+            _lens_label(lens)
+            for lens in lenses
+            if _lens_label(lens) and _lens_label(lens) not in used_lenses
+        ]
+        remaining = max(0, 3 - len(used_lenses))
+        lens_hint = f" Suggested unused lenses: {', '.join(unused[:3])}." if unused else ""
+        return (
+            "Stage 1 still needs tool calls: call the reflect tool with an unused "
+            f"lens to reach at least 3 perspectives ({len(used_lenses)}/3 used, "
+            f"{remaining} remaining).{lens_hint} Do not answer in plain text only."
+        )
+
+    if stage == 3.5 and not getattr(handler, "adversarial_results", {}):
+        return (
+            "Stage 3.5 adversarial gate is not complete: call the challenge tool "
+            "on at least one key finding now. Plain-text critique does not count "
+            "as passing the gate."
+        )
+
+    if stage in (2, 3):
+        return (
+            "Your analysis was recorded. To keep the pipeline moving, use a tool "
+            "next: call reflect to formalize the analysis, challenge to test a "
+            "key finding, or crystallize to save a durable insight."
+        )
+
+    return "Continue the research pipeline by calling the next required tool."
+
+
 async def research_loop(
     llm_client: Any,
     question: str,
@@ -353,7 +397,7 @@ async def research_loop(
             )
             messages.append({
                 "role": "user",
-                "content": "Continue the research pipeline by calling the next required tool.",
+                "content": _no_tool_retry_prompt(handler),
             })
             continue
 

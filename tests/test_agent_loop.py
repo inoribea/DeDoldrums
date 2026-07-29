@@ -10,6 +10,7 @@ from agent_loop import (
     FINAL_SYNTHESIS_TIMEOUT_SECONDS,
     _compact_final_report_messages,
     _fallback_final_brief,
+    _no_tool_retry_prompt,
     research_loop,
 )
 from llm import ChatResponse, FunctionCall, ToolCall
@@ -28,6 +29,21 @@ class FakeHandler:
 class FinalReviewHandler(FakeHandler):
     stage = 4
     findings = [{"type": "reflection", "data": {}}]
+
+
+class StageOneHandler(FakeHandler):
+    stage = 1
+    lenses_used = {"skeptic"}
+    dynamic_lenses = [
+        {"key": "skeptic", "name": "Skeptic"},
+        {"key": "practitioner", "name": "Practitioner"},
+        {"key": "academic", "name": "Academic"},
+    ]
+
+
+class StageThreePointFiveHandler(FakeHandler):
+    stage = 3.5
+    adversarial_results: dict[str, object] = {}
 
 
 class FakeLlmClient:
@@ -266,6 +282,38 @@ class ResearchLoopTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "stopped issuing tool calls"):
             asyncio.run(research_loop(client, "Test question", handler=FakeHandler()))
+
+    def test_stage_one_no_tool_retry_prompt_names_reflect(self) -> None:
+        prompt = _no_tool_retry_prompt(StageOneHandler())
+
+        self.assertIn("reflect", prompt)
+        self.assertIn("1/3", prompt)
+        self.assertIn("practitioner", prompt)
+
+    def test_stage_35_no_tool_retry_prompt_names_challenge_gate(self) -> None:
+        prompt = _no_tool_retry_prompt(StageThreePointFiveHandler())
+
+        self.assertIn("challenge", prompt)
+        self.assertIn("adversarial gate", prompt)
+        self.assertIn("Plain-text", prompt)
+
+    def test_no_tool_retry_uses_stage_aware_prompt_in_loop(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="I will describe the adversarial review in prose."),
+            ChatResponse(content="Still no tool call."),
+            ChatResponse(content="One more prose response."),
+        ])
+
+        with self.assertRaisesRegex(RuntimeError, "stopped issuing tool calls"):
+            asyncio.run(research_loop(client, "Test question", handler=StageThreePointFiveHandler()))
+
+        retry_request = client.requests[2]
+        self.assertTrue(any(
+            isinstance(message.get("content"), str)
+            and "challenge tool" in message["content"]
+            for message in retry_request
+        ))
 
 
 if __name__ == "__main__":
