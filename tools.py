@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -18,6 +19,9 @@ except ImportError:  # Supports direct execution from the package directory.
     from lenses import LENS_LIBRARY, get_lens
     from memory import MemoryStore
     from prompts import REFLECT_SYSTEM_PROMPT
+
+
+CHALLENGE_TIMEOUT_SECONDS = 45.0
 
 
 TOOLS_SCHEMA = [
@@ -172,19 +176,44 @@ async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = N
         return {"target": target, "challenges": {}, "error": f"unsupported mode: {mode}"}
 
     modes_to_run = challenge_prompts if mode == "all" else {mode: challenge_prompts[mode]}
-    results = {}
-    for current_mode, instruction in modes_to_run.items():
-        if on_status:
-            label = {"logic_flaw": "Logic check", "hidden_assumption": "Hidden assumptions", "missing_evidence": "Missing evidence", "alternative_explanation": "Alternative explanations"}.get(current_mode, current_mode)
-            on_status(f"Challenge: {label}…")
-        prompt = f"""作为严格的同行评审者，{instruction}。
+    pairs = await asyncio.gather(*(
+        _run_challenge_mode(current_mode, instruction, target, context, llm_client, on_status)
+        for current_mode, instruction in modes_to_run.items()
+    ))
+    results = dict(pairs)
+    return {"target": target, "challenges": results}
+
+
+async def _run_challenge_mode(
+    current_mode: str,
+    instruction: str,
+    target: str,
+    context: str,
+    llm_client: Any,
+    on_status: Any = None,
+) -> tuple[str, str]:
+    if on_status:
+        label = {
+            "logic_flaw": "Logic check",
+            "hidden_assumption": "Hidden assumptions",
+            "missing_evidence": "Missing evidence",
+            "alternative_explanation": "Alternative explanations",
+        }.get(current_mode, current_mode)
+        on_status(f"Challenge: {label}…")
+    prompt = f"""作为严格的同行评审者，{instruction}。
 
 论点: {target}
 背景: {context}
 
 请直接指出问题，不要客套。如果没问题就说没问题。"""
-        results[current_mode] = await _call_llm(llm_client, prompt, 0.3, role="content_review")
-    return {"target": target, "challenges": results}
+    try:
+        result = await asyncio.wait_for(
+            _call_llm(llm_client, prompt, 0.3, role="content_review"),
+            timeout=CHALLENGE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        result = f"Challenge timed out after {CHALLENGE_TIMEOUT_SECONDS:g} seconds."
+    return current_mode, result
 
 
 async def do_crystallize(args: dict[str, Any], memory: MemoryStore) -> dict[str, str]:
@@ -264,4 +293,6 @@ async def _call_llm(llm_client: Any, prompt: str, temperature: float, role: str 
         temperature=temperature,
         role=role,
     )
+    if getattr(response, "error", None):
+        return f"LLM error: {response.error}"
     return str(getattr(response, "content", response) if hasattr(response, "content") else response)
