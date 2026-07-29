@@ -136,6 +136,7 @@ class ResearchBridge:
             session.add_event("status", {"message": msg})
         def on_stage(stage: int | float, desc: str) -> None:
             session.add_event("stage_change", {"stage": stage, "description": desc})
+        thread_name = threading.current_thread().name
         try:
             session.add_event("stage_change", {"stage": 0, "description": self._stage_name(0)})
             if session.cancelled.is_set():
@@ -143,12 +144,17 @@ class ResearchBridge:
             # Wire callbacks into the session's handler so findings are collected there
             session.handler.on_status = on_status
             session.handler.on_stage = on_stage
-            logger.info("Starting research: %s", session.question[:80])
+            logger.info("Starting research sid=%s thread=%s question=%s", session.sid, thread_name, session.question[:80])
             brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler))
             if not isinstance(brief, str) or not brief.strip():
                 raise RuntimeError("Research completed without a final brief.")
-            logger.info("Research completed — brief: %d chars, findings: %d",
-                        len(brief), len(getattr(session.handler, "findings", [])))
+            logger.info(
+                "Research completed sid=%s thread=%s — brief: %d chars, findings: %d",
+                session.sid,
+                thread_name,
+                len(brief),
+                len(getattr(session.handler, "findings", [])),
+            )
             if len(brief) < 50:
                 logger.warning("Brief is suspiciously short: %r", brief)
             if session.cancelled.is_set():
@@ -163,7 +169,7 @@ class ResearchBridge:
             )
             session.memory.archive_session(session.question, [{"final_brief": brief}])
         except Exception as exc:  # The event stream remains usable after a failed run.
-            logger.error("Research failed: %s", exc, exc_info=True)
+            logger.error("Research failed sid=%s thread=%s: %s", session.sid, thread_name, exc, exc_info=True)
             session.add_event("error", {"message": str(exc)})
         finally:
             session.done = True

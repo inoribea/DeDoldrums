@@ -12,6 +12,7 @@ import logging
 
 
 LOGGER = logging.getLogger(__name__)
+EMPTY_ERROR_DETAIL = "LLM request failed with empty error detail"
 
 
 PROVIDER_REGISTRY = {
@@ -191,8 +192,9 @@ class BaseBackend:
                 )
             return data, None
         except (httpx.HTTPError, json.JSONDecodeError, ValueError) as exc:
-            LOGGER.warning("LLM %s request failed: %s", path, str(exc)[:200])
-            return None, str(exc)
+            detail = str(exc).strip() or EMPTY_ERROR_DETAIL
+            LOGGER.warning("LLM %s request failed (%s): %s", path, exc.__class__.__name__, detail[:200])
+            return None, detail
 
     async def chat(
         self,
@@ -228,8 +230,8 @@ class ChatBackend(BaseBackend):
             payload,
             {"Authorization": f"Bearer {self.api_key or ''}"},
         )
-        if error:
-            return ChatResponse(error=error)
+        if error is not None:
+            return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
         return _parse_chat_response(data)
 
 
@@ -253,8 +255,8 @@ class ResponseBackend(BaseBackend):
         data, error = await self._post(
             "/responses", payload, {"Authorization": f"Bearer {self.api_key or ''}"}
         )
-        if error:
-            return ChatResponse(error=error)
+        if error is not None:
+            return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
 
         text: list[str] = []
         calls: list[ToolCall] = []
@@ -320,8 +322,8 @@ class MessagesBackend(BaseBackend):
             payload,
             {"x-api-key": self.api_key or "", "anthropic-version": "2023-06-01"},
         )
-        if error:
-            return ChatResponse(error=error)
+        if error is not None:
+            return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
 
         text: list[str] = []
         calls: list[ToolCall] = []
@@ -369,8 +371,8 @@ class CompletionsBackend(BaseBackend):
         data, error = await self._post(
             "/completions", payload, {"Authorization": f"Bearer {self.api_key or ''}"}
         )
-        if error:
-            return ChatResponse(error=error)
+        if error is not None:
+            return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
 
         choices = data.get("choices", []) if data else []
         first = choices[0] if choices else {}
@@ -419,8 +421,8 @@ class V1BetaBackend(BaseBackend):
             payload,
             {"x-goog-api-key": self.api_key or ""},
         )
-        if error:
-            return ChatResponse(error=error)
+        if error is not None:
+            return ChatResponse(error=error or EMPTY_ERROR_DETAIL)
 
         candidates = data.get("candidates", []) if data else []
         candidate = candidates[0] if candidates else {}

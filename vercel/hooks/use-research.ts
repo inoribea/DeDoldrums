@@ -90,6 +90,7 @@ export function useResearch(): UseResearchReturn {
   const sessionIdRef = useRef<string | null>(null);
   const seenCountRef = useRef(0);
   const stoppedRef = useRef(false);
+  const startingRef = useRef(false);
   const { t } = useLanguage();
 
   const stopPolling = useCallback(() => {
@@ -102,6 +103,7 @@ export function useResearch(): UseResearchReturn {
 
   const reset = useCallback(() => {
     stopPolling();
+    startingRef.current = false;
     findingsCountRef.current = 0;
     seenCountRef.current = 0;
     sessionIdRef.current = null;
@@ -117,6 +119,7 @@ export function useResearch(): UseResearchReturn {
       await fetch(`/api/session/${encodeURIComponent(sid)}/cancel`, { method: "POST" });
     } catch { /* best-effort */ }
     stopPolling();
+    startingRef.current = false;
     clearSession();
     setState((s) => ({ ...s, status: "cancelled" as const }));
   }, [stopPolling]);
@@ -234,6 +237,8 @@ export function useResearch(): UseResearchReturn {
     async (question: string) => {
       const trimmed = question.trim();
       if (!trimmed) return;
+      if (startingRef.current) return;
+      startingRef.current = true;
 
       stopPolling();
       findingsCountRef.current = 0;
@@ -267,7 +272,9 @@ export function useResearch(): UseResearchReturn {
         setState((s) => ({ ...s, status: "streaming" }));
         setSavedQuestion(trimmed);
         setupPolling(sessionId, trimmed);
+        startingRef.current = false;
       } catch (err) {
+        startingRef.current = false;
         const message = err instanceof Error ? err.message : "Unexpected request failure";
         setState((s) => ({ ...s, status: "error", error: message }));
       }
