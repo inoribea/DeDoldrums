@@ -48,6 +48,9 @@ FINAL_REPORT_RETRY_PROMPT = (
 
 MAX_CONSECUTIVE_NO_TOOL_RESPONSES = 3
 FINAL_REPORT_ATTEMPTS = 3
+FINAL_SYNTHESIS_TIMEOUT_SECONDS = 240.0
+FINAL_REPORT_CONTEXT_MAX_CHARS = 24000
+FINAL_REPORT_TRUNCATION_NOTICE = "\n\n[... truncated to keep final report input within budget ...]"
 
 
 def _message_content_text(message: Mapping[str, Any]) -> str:
@@ -57,6 +60,87 @@ def _message_content_text(message: Mapping[str, Any]) -> str:
     if content is None:
         return ""
     return str(content).strip()
+
+
+def _message_size(message: Mapping[str, Any]) -> int:
+    return len(json.dumps(dict(message), ensure_ascii=False))
+
+
+def _fit_message_content(role: str, content: str, max_size: int) -> str | None:
+    empty_size = _message_size({"role": role, "content": ""})
+    if max_size < empty_size:
+        return None
+
+    if _message_size({"role": role, "content": content}) <= max_size:
+        return content
+
+    available = max_size - empty_size
+    if available <= 0:
+        return ""
+
+    suffix = FINAL_REPORT_TRUNCATION_NOTICE
+    if available <= len(suffix):
+        fitted = suffix[-available:]
+        while fitted and _message_size({"role": role, "content": fitted}) > max_size:
+            fitted = fitted[1:]
+        return fitted
+
+    fitted = f"{content[:available - len(suffix)]}{suffix}"
+    while fitted and _message_size({"role": role, "content": fitted}) > max_size:
+        excess = _message_size({"role": role, "content": fitted}) - max_size
+        keep = max(0, len(fitted) - len(suffix) - excess)
+        fitted = f"{fitted[:keep]}{suffix}"
+    return fitted
+
+
+def _compact_final_report_messages(
+    messages: Sequence[Mapping[str, Any]],
+    max_chars: int = FINAL_REPORT_CONTEXT_MAX_CHARS,
+) -> list[dict[str, Any]]:
+    """Return bounded context for final report generation.
+
+    Keep the input bounded to avoid context-overflow and excessive prefill cost.
+    Long final reports are still protected separately by a longer read timeout.
+    """
+    if not messages:
+        return []
+
+    compact: list[dict[str, Any]] = []
+    used_chars = 0
+
+    for message in messages[:2]:
+        role = str(message.get("role", "user"))
+        content = _message_content_text(message)
+        remaining = max_chars - used_chars
+        fitted = _fit_message_content(role, content, remaining)
+        if fitted is None:
+            break
+        compact_message = {"role": role, "content": fitted}
+        compact.append(compact_message)
+        used_chars += _message_size(compact_message)
+
+    recent_assistant = [
+        m for m in messages
+        if m.get("role") == "assistant" and m.get("content")
+    ]
+    selected: list[dict[str, Any]] = []
+    assistant_budget = max_chars - used_chars
+    assistant_used = 0
+
+    for message in reversed(recent_assistant):
+        content = _message_content_text(message)
+        remaining = assistant_budget - assistant_used
+        fitted = _fit_message_content("assistant", content, remaining)
+        if fitted is None:
+            break
+        compact_message = {"role": "assistant", "content": fitted}
+        selected.append(compact_message)
+        assistant_used += _message_size(compact_message)
+        if assistant_used >= assistant_budget:
+            break
+
+    compact.extend(reversed(selected))
+    return compact
 
 
 def _sanitize_recovered_note(text: str) -> str:
@@ -182,22 +266,9 @@ async def research_loop(
     ]
 
     async def compose_final_brief() -> str:
-        # Build a compact message list for the final report call.
-        # After many research turns the full history can overflow the
-        # conversational model's context window. Keep only the
-        # system prompt, original question, and recent assistant outputs
-        # that contain the synthesis and peer review.
-        recent_assistant = [
-            m for m in messages
-            if m.get("role") == "assistant" and m.get("content")
-        ]
-        compact = [
-            messages[0],   # system prompt
-            messages[1],   # original user question
-            *recent_assistant[-8:],  # last 8 assistant outputs (synthesis + peer review)
-        ]
+        compact = _compact_final_report_messages(messages)
 
-        total_chars = sum(len(str(m)) for m in compact)
+        total_chars = sum(_message_size(m) for m in compact)
         _status(
             f"Composing final brief ({len(compact)} messages, "
             f"~{total_chars // 4} estimated tokens)…"
@@ -210,13 +281,12 @@ async def research_loop(
                 messages=retry_messages,
                 tools=[],
                 role="conversational",
+                timeout=FINAL_SYNTHESIS_TIMEOUT_SECONDS,
             )
             if response.error:
                 last_failure = response.error
                 if attempt < FINAL_REPORT_ATTEMPTS - 1:
                     _status(f"Final brief attempt {attempt + 1} failed ({response.error}); retrying…")
-                    messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
-                    retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                     continue
                 _status(
                     "Final brief generator failed after retries; "
@@ -231,7 +301,6 @@ async def research_loop(
             last_failure = "empty final brief"
             if attempt < FINAL_REPORT_ATTEMPTS - 1:
                 _status("Final research brief was empty; retrying…")
-                messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                 retry_messages.append({"role": "user", "content": FINAL_REPORT_RETRY_PROMPT})
                 continue
 
@@ -251,6 +320,7 @@ async def research_loop(
                 messages=messages,
                 tools=[],
                 role="tool_calling",
+                timeout=FINAL_SYNTHESIS_TIMEOUT_SECONDS,
             )
             if peer_review.error:
                 raise RuntimeError(f"Final peer review failed: {peer_review.error}")

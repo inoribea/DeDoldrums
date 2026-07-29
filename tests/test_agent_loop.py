@@ -4,7 +4,14 @@ import os
 import tempfile
 import unittest
 
-from agent_loop import _fallback_final_brief, research_loop
+from agent_loop import (
+    FINAL_REPORT_CONTEXT_MAX_CHARS,
+    FINAL_REPORT_RETRY_PROMPT,
+    FINAL_SYNTHESIS_TIMEOUT_SECONDS,
+    _compact_final_report_messages,
+    _fallback_final_brief,
+    research_loop,
+)
 from llm import ChatResponse, FunctionCall, ToolCall
 from memory import MemoryStore
 from tools import do_crystallize
@@ -28,8 +35,10 @@ class FakeLlmClient:
         self.responses = iter(responses)
         self.requests: list[list[dict[str, object]]] = []
         self.calls: list[tuple[object, object]] = []
+        self.kwargs: list[dict[str, object]] = []
 
     async def chat(self, **kwargs: object) -> ChatResponse:
+        self.kwargs.append(dict(kwargs))
         messages = kwargs.get("messages")
         if isinstance(messages, list):
             self.requests.append(list(messages))
@@ -123,6 +132,73 @@ class ResearchLoopTests(unittest.TestCase):
         self.assertIn("Research brief (recovered)", brief)
         self.assertIn("Failure reason: Empty API response", brief)
         self.assertIn("Peer review", brief)
+
+    def test_final_synthesis_calls_use_extended_timeout(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(content="Final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertEqual(brief, "Final research brief")
+        self.assertIsNone(client.kwargs[0].get("timeout"))
+        self.assertEqual(client.kwargs[1].get("timeout"), FINAL_SYNTHESIS_TIMEOUT_SECONDS)
+        self.assertEqual(client.kwargs[2].get("timeout"), FINAL_SYNTHESIS_TIMEOUT_SECONDS)
+
+    def test_final_brief_error_retry_does_not_grow_payload(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(error="The read operation timed out"),
+            ChatResponse(error="The read operation timed out"),
+            ChatResponse(error="The read operation timed out"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertIn("Research brief (recovered)", brief)
+        final_requests = client.requests[2:]
+        self.assertEqual(len(final_requests), 3)
+        self.assertEqual([len(request) for request in final_requests], [4, 4, 4])
+        self.assertFalse(any(
+            message.get("content") == FINAL_REPORT_RETRY_PROMPT
+            for request in final_requests
+            for message in request
+        ))
+
+    def test_empty_final_brief_retry_prompt_stays_local_to_final_request(self) -> None:
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Peer review"),
+            ChatResponse(content=""),
+            ChatResponse(content="Recovered final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+
+        self.assertEqual(brief, "Recovered final research brief")
+        self.assertTrue(any(
+            message.get("content") == FINAL_REPORT_RETRY_PROMPT
+            for message in client.requests[-1]
+        ))
+
+    def test_final_report_context_is_capped_by_character_budget(self) -> None:
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "old note should be dropped"},
+            {"role": "assistant", "content": "new" * FINAL_REPORT_CONTEXT_MAX_CHARS},
+        ]
+
+        compact = _compact_final_report_messages(messages)
+        serialized_size = sum(len(json.dumps(message, ensure_ascii=False)) for message in compact)
+
+        self.assertLessEqual(serialized_size, FINAL_REPORT_CONTEXT_MAX_CHARS)
+        self.assertEqual(compact[0]["role"], "system")
+        self.assertEqual(compact[1]["role"], "user")
+        self.assertIn("truncated", str(compact[-1].get("content")))
 
     def test_recovered_brief_removes_tool_call_markup(self) -> None:
         brief = _fallback_final_brief([
