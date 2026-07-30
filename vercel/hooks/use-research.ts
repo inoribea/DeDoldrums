@@ -100,12 +100,11 @@ export function useResearch(): UseResearchReturn {
   // ── Timer: single useEffect, driven by status ──
   const isBusy = state.status === "creating" || state.status === "starting" || state.status === "streaming";
   useEffect(() => {
-    if (!isBusy || !startedAtRef.current) return;
+    if (!isBusy) return;
     const id = window.setInterval(() => {
+      if (!startedAtRef.current) return; // wait for start time (reconnect path)
       const end = completedAtRef.current ?? Date.now();
-      if (startedAtRef.current) {
-        setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
-      }
+      setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
     }, 250);
     return () => window.clearInterval(id);
   }, [isBusy]);
