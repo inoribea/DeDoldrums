@@ -88,7 +88,6 @@ export function useResearch(): UseResearchReturn {
   const [savedQuestion, setSavedQuestion] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pollingRef = useRef<number | null>(null);
-  const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const completedAtRef = useRef<number | null>(null);
   const findingsCountRef = useRef(0);
@@ -97,6 +96,19 @@ export function useResearch(): UseResearchReturn {
   const stoppedRef = useRef(false);
   const startingRef = useRef(false);
   const { t } = useLanguage();
+
+  // ── Timer: single useEffect, driven by status ──
+  const isBusy = state.status === "creating" || state.status === "starting" || state.status === "streaming";
+  useEffect(() => {
+    if (!isBusy || !startedAtRef.current) return;
+    const id = window.setInterval(() => {
+      const end = completedAtRef.current ?? Date.now();
+      if (startedAtRef.current) {
+        setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
+      }
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [isBusy]);
 
   const stopPolling = useCallback(() => {
     stoppedRef.current = true;
@@ -108,7 +120,6 @@ export function useResearch(): UseResearchReturn {
 
   const reset = useCallback(() => {
     stopPolling();
-    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
     startingRef.current = false;
     findingsCountRef.current = 0;
     seenCountRef.current = 0;
@@ -198,19 +209,10 @@ export function useResearch(): UseResearchReturn {
   );
 
   const setupPolling = useCallback(
-    (sid: string, question: string, knownStartedAt?: number) => {
+    (sid: string, question: string) => {
       stoppedRef.current = false;
       sessionIdRef.current = sid;
       saveSession(sid, question);
-
-      if (knownStartedAt) {
-        startedAtRef.current = knownStartedAt;
-        if (timerRef.current !== null) window.clearInterval(timerRef.current);
-        timerRef.current = window.setInterval(() => {
-          const end = completedAtRef.current ?? Date.now();
-          setElapsedSeconds(Math.floor((end - knownStartedAt) / 1000));
-        }, 1000);
-      }
 
       let pollCount = 0;
       const base = window.location.origin;
@@ -227,16 +229,9 @@ export function useResearch(): UseResearchReturn {
           })
           .then((data) => {
             if (!data || stoppedRef.current) return;
-            // Use server-stored startedAt if we don't have one yet
+            // On reconnect: adopt server timestamp if we don't have one yet
             if (!startedAtRef.current && data.startedAt) {
               startedAtRef.current = data.startedAt;
-              if (timerRef.current !== null) window.clearInterval(timerRef.current);
-              timerRef.current = window.setInterval(() => {
-                const end = completedAtRef.current ?? Date.now();
-                if (startedAtRef.current) {
-                  setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
-                }
-              }, 1000);
             }
             const msgCount = data.messages?.length || 0;
             processMessages(data.messages || []);
@@ -278,14 +273,6 @@ export function useResearch(): UseResearchReturn {
       startedAtRef.current = Date.now();
       completedAtRef.current = null;
       setElapsedSeconds(0);
-      // Start 1-second timer tick
-      if (timerRef.current !== null) window.clearInterval(timerRef.current);
-      timerRef.current = window.setInterval(() => {
-        if (startedAtRef.current) {
-          const end = completedAtRef.current ?? Date.now();
-          setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
-        }
-      }, 1000);
 
       try {
         const base = window.location.origin;
@@ -360,11 +347,6 @@ export function useResearch(): UseResearchReturn {
   }, []);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
-
-  // Cleanup timer on unmount
-  useEffect(() => () => {
-    if (timerRef.current !== null) window.clearInterval(timerRef.current);
-  }, []);
 
   const latestStatus = state.statusLog.length > 0 ? state.statusLog[state.statusLog.length - 1] : null;
 
