@@ -20,7 +20,7 @@
 
 基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 构建，受 [STORM](https://arxiv.org/abs/2402.14207) 启发。
 
-成年bai e鹱能够判断陆地的方位，缺乏这种方位感的幼鸟更容易在风暴后迷航。DeDoldrums 为议题建立同样的方位感：先画出矛盾地图，再选择审慎的航线。
+成年白额鹱能够判断陆地的方位，缺乏这种方位感的幼鸟更容易在风暴后迷航。DeDoldrums 为议题建立同样的方位感：先画出矛盾地图，再选择审慎的航线。
 
 ---
 
