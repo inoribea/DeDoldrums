@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/lines-~2.5K-lightgrey" alt="~2500 lines">
+  <img src="https://img.shields.io/badge/deps-4-lightgrey" alt="4 dependencies">
 </p>
 
 <p align="center">
@@ -10,183 +10,150 @@
 
 # DeDoldrums
 
-> **Know your shore by storm.**  
-> *The streaked shearwater survives typhoons not by bravery, but by bearings.*  
+> **Know your shore by storm.**
+> *The streaked shearwater survives typhoons not by bravery, but by bearings.*
 > **Don't flee uncertainty. Don't chase it. Navigate it—with the shore in mind.**
 
-A self-evolving research agent that turns conflicting perspectives into tested insight—navigating disagreement with bearings, not bravado.
+A research agent that turns conflicting perspectives into tested insight — navigating disagreement with bearings, not bravado.
 
 Built on [GenericAgent](https://github.com/lsdefine/GenericAgent) and inspired by [STORM](https://arxiv.org/abs/2402.14207).
 
+Research suggests that adult streaked shearwaters hold a map sense of where land lies; juveniles, lacking it, are disproportionately wrecked after storms. DeDoldrums builds that map sense for a topic: contradiction maps first, deliberate passage second.
+
 ---
 
-## 🌟 Overview
+## What Makes It Different
 
-A GenericAgent studies **computers**. A DeDoldrums studies **topics**. Same skeleton, different tools.
+Most research agents stop at "search → summarize → cite." DeDoldrums adds two things:
 
-| GenericAgent | DeDoldrums |
+| What | Why It Matters |
 |:---|:---|
-| 9 computer-control tools | 4 knowledge-operation tools (`explore`, `reflect`, `challenge`, `crystallize`) |
-| Task execution loop | 5.5-stage STORM research pipeline |
-| Self-evolves via task→SOP | Self-evolves via insight→thinking pattern |
-| Goal Mode: create→verify→improve | Goal Mode: explore→verify→deepen |
+| **Enforced adversarial gate** | The pipeline physically blocks after synthesis until at least one finding passes a structured challenge — logic flaws, hidden assumptions, missing evidence, alternative explanations. No rubber-stamping. Findings that fail are flagged for revision and carried into peer review. |
+| **Role-based LLM routing** | Four research roles (`tool_calling`, `creative`, `conversational`, `content_review`) can each use a different model and provider. Your orchestrator runs on GPT-5.5 while divergent thinking uses Claude. The adversarial gate gets its own model — no self-review bias. |
 
-Instead of preloading "what good research looks like," DeDoldrums discovers perspectives dynamically from web search results, stress-tests every finding through an enforced adversarial gate, and crystallizes breakthroughs into reusable thinking SOPs. Research suggests that adult streaked shearwaters hold a map sense of where land lies; juveniles, lacking it, are disproportionately wrecked after storms. DeDoldrums builds that map sense for a topic: contradiction maps first, deliberate passage second.
+Under the hood: a 5.5-stage STORM pipeline, dynamic perspective discovery, fan-out parallel sub-agents, and L0-L4 layered memory that persists insights across sessions.
 
 ---
 
-## 📋 Key Features
-
-| Feature | Description |
-|:---|:---|
-| 🧬 **Self-Evolving** | Crystallizes insights into L3 thinking SOPs; Goal Mode deepens across iterations with prior context |
-| 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from search results — usable as first-class lens identities |
-| ⚔️ **Adversarial Gate** | Stage 3.5 requires real challenge calls; findings with detected issues are marked for revision |
-| 🗺️ **Contradiction Mapping** | Surfaces conflicts between perspectives — consensus zones and collective blind spots |
-| 🎭 **Multi-Role LLM** | Four roles (conversational, tool_calling, creative, content_review) each routed to different models/backends |
-| 🔌 **Multi-Provider** | 5 backends (chat / responses / messages / completions / v1beta) × 7 providers (OpenAI, Anthropic, DeepSeek, Kimi, Zhipu, Google, OpenAI-Completion) |
-| 🧠 **L0-L4 Memory** | Meta-rules → pattern index → domain knowledge → thinking SOPs → session archives |
-| 🌐 **Multi-Platform** | One Bridge server → Web UI, Telegram, Discord, Vercel |
-
----
-
-## 🎯 The 5.5-Stage Pipeline
+## The Pipeline
 
 ```
-Stage 0   — Dynamic Lens Discovery    (web search → LLM → topic-specific perspectives)
-Stage 1   — Multi-Perspective Scan    (dynamic lenses × independent exploration)
-Stage 2   — Contradiction Map         (conflicts, consensus, blind spots)
+Stage 0   — Dynamic Lens Discovery    (web search → generate topic-specific perspectives)
+Stage 1   — Multi-Perspective Scan    (fan-out parallel sub-agents, one per lens)
+Stage 2   — Contradiction Map         (conflicts, consensus, collective blind spots)
 Stage 3   — Synthesis                 (cross-lens connections → structured brief)
-Stage 3.5 — ⚔️ Adversarial Gate       (enforced challenge — requires ≥1 finding examined)
+Stage 3.5 — ⚔️ Adversarial Gate       (blocks until ≥1 challenge executed; flagged findings carry into peer review)
 Stage 4   — Peer Review               (confidence scores, bias check, missing angles)
 ```
 
-> ⚠️ **Stage 3.5 requires real challenges.** The gate won't advance until findings have been examined. No rubber-stamping.
+> Stage 3.5 is not a prompt asking the model to "check your work." It's a hard gate — the loop won't proceed until the `challenge` tool has been called with actual analysis, not a summary.
 
 ---
 
-## 🚀 Local Deployment
+## Feature Overview
 
-### Option A: Bare Metal (Python venv)
+| Feature | Description |
+|:---|:---|
+| ⚔️ **Enforced Adversarial Gate** | Stage 3.5 hard-blocks the pipeline. 4 challenge modes run concurrently: logic flaws, hidden assumptions, missing evidence, alternative explanations. Flagged findings carry forward. |
+| 🎭 **Multi-Role LLM** | 4 roles independently routed to different models/providers. No single-model self-review. |
+| 🔌 **Multi-Provider** | 5 API backends (chat / responses / messages / completions / v1beta) × 7 providers (OpenAI, Anthropic, DeepSeek, Kimi, Zhipu, Google, OpenAI-compatible). Raw HTTP — no SDK lock-in. |
+| ⚡ **Fan-Out Parallelism** | Stage 1 dispatches 2-3 lens sub-agents concurrently via `asyncio.gather`. Each sub-agent pre-fetches its own web search, runs independent LLM analysis, then returns. |
+| 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from live search results — unlike fixed-perspective approaches, each lens is generated for the topic at hand and usable as a first-class tool identity in the pipeline. 9-lens static library as fallback. |
+| 🧠 **L0-L4 Memory** | Layered flat-file memory: meta-rules → pattern index → domain knowledge → thinking SOPs → session archives. No vector DB. Insights crystallize across sessions. |
+| 🗺️ **Contradiction Mapping** | Surfaces where perspectives agree, clash, or share blind spots — before conclusions are drawn. |
+| 🌐 **Multi-Platform** | One aiohttp bridge serves HTTP+SSE → Web UI (Next.js 14), Telegram bot, Discord bot, Vercel proxy. |
+
+---
+
+## Quick Start
 
 ```bash
 git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt                      # 4 dependencies total
-cp .env.example .env                                 # configure LLM roles
+cp .env.example .env
 ```
 
-**CLI mode:**
+### CLI
 
 ```bash
 python main.py "What is the real timeline for quantum computing to break RSA?"
 python main.py --goal --budget 30 "Comparing feasible AGI governance frameworks"
 ```
 
-**Web UI mode:**
+### Web UI
 
 ```bash
 python bridge.py                     # → http://127.0.0.1:18765
 ```
 
-Open your browser. Type a question. Watch the 5.5-stage pipeline with live status and a collapsible thinking log.
+Live pipeline visualization, collapsible thinking log, streaming output.
 
-### Option B: Docker
+### Docker
 
 ```bash
-git clone https://github.com/inoribea/DeDoldrums.git && cd DeDoldrums
-cp .env.example .env
 docker compose up -d                 # → http://localhost:18765
 ```
 
 The `docker-compose.yml` mounts `./memory/` as a volume — knowledge persists across restarts.
 
-### Option C: systemd (Linux)
-
-```bash
-sudo cp systemd/research-agent.service /etc/systemd/system/
-sudo useradd -r -s /bin/false research
-sudo mkdir -p /opt/research-agent && sudo cp -r . /opt/research-agent/
-sudo cp .env /opt/research-agent/
-cd /opt/research-agent && python -m venv .venv && .venv/bin/pip install -r requirements.txt
-sudo systemctl daemon-reload && sudo systemctl enable --now research-agent
-```
-
 ### LLM Configuration
 
-Each research role can use a different model/provider. Format: `PROVIDER/MODEL_ID`.
+Each research role routes to a different model. Format: `PROVIDER/MODEL_ID`.
 
 ```bash
-LLM_TOOL_CALLING=openai/gpt-5.5              # core loop, tool selection & pipeline orchestration
-LLM_CREATIVE=anthropic/claude-sonnet-5       # divergent thinking, lens discovery & reflection
-LLM_CONVERSATIONAL=openai/gpt-5.5-mini       # user interaction, question refinement & final report
-LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge & verification
-
-# Provider API keys
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-DEEPSEEK_API_KEY=sk-...
-KIMI_API_KEY=sk-...
+LLM_TOOL_CALLING=openai/gpt-5.5              # pipeline orchestration, tool selection
+LLM_CREATIVE=anthropic/claude-sonnet-5       # lens discovery, divergent thinking
+LLM_CONVERSATIONAL=openai/gpt-5.5-mini       # user interaction, final report
+LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execution
 ```
-
-### Vercel Frontend
-
-```bash
-cd vercel && npm install
-# Set BRIDGE_URL + BRIDGE_API_KEY in Vercel dashboard
-npx vercel deploy --prod
-```
-
-The frontend polls the bridge through Vercel API routes every 2 seconds — no direct connection needed.
 
 ---
 
-## 🏗️ Architecture
+## Knowledge Tools
+
+| Tool | Does |
+|:---|:---|
+| `explore` | DuckDuckGo search, memory retrieval, URL deep reading |
+| `reflect` | Apply a thinking lens (dynamic or static) to analyze findings |
+| `challenge` | 4-mode adversarial pressure test — logic, assumptions, evidence, alternatives — runs concurrently |
+| `crystallize` | Persist breakthrough insights into layered memory for cross-session reuse |
+| `sub_research` | Fan-out parallel sub-agents: pre-fetch search per lens, concurrent single-turn LLM analysis |
+
+---
+
+## Architecture
 
 ```
 research_agent/
 ├── agent_loop.py       # async main loop (LLM → dispatch → stage advance)
 ├── handler.py          # tool router + 5.5-stage state machine
-├── tools.py            # explore / reflect / challenge / crystallize
-├── llm.py              # 5 backends + 7-provider registry + role-based LLMRouter
-├── memory.py           # L0-L4 layered memory
+├── tools.py            # explore / reflect / challenge / crystallize / sub_research
+├── llm.py              # 5 backends × 7 providers, role-based LLMRouter
+├── memory.py           # L0-L4 layered flat-file memory
 ├── lenses.py           # dynamic lens discovery + 9-lens static library
-├── prompts.py          # STORM stage prompt templates
-├── goal_mode.py        # continuous self-driven loop (ported from GA)
+├── prompts.py          # STORM stage prompt templates (Chinese)
+├── goal_mode.py        # budget-aware self-driven deepening loop
 ├── main.py             # CLI entry
 ├── config.py           # role-based LLM config + provider resolution
-├── bridge.py           # aiohttp HTTP+SSE server + built-in frontend hosting
-├── launch.py           # one-click: bridge + bots
+├── bridge.py           # aiohttp HTTP+SSE server + static frontend hosting
+├── launch.py           # one-click: bridge + Telegram/Discord bots
 ├── adapters/           # Telegram / Discord bot adapters
 ├── vercel/             # Next.js 14 + shadcn/ui frontend + API proxy routes
-├── Dockerfile          # containerized deployment
-├── docker-compose.yml  # one-command Docker deployment
-└── systemd/            # systemd service template
+├── Dockerfile / docker-compose.yml / systemd/
+└── tests/              # pipeline, tools, gate behavior
 ```
-
-### The 4 Knowledge Tools
-
-| Tool | Schema | Does |
-|:---|:---|:---|
-| `explore` | `query` + `source` (web/memory/url) | DuckDuckGo search, memory retrieval, URL deep reading |
-| `reflect` | `lens` + `focus` | Applies a thinking lens (dynamic or static) to analyze findings |
-| `challenge` | `target` + `mode` | Adversarial pressure test: logic, assumptions, evidence, alternatives |
-| `crystallize` | `insight` + `category` | Persists breakthroughs into layered memory for future sessions |
 
 ---
 
-## 📚 Methodology
+## Methodology
 
-DeDoldrums fuses four lines of work:
-
-| Source | What We Took | Reference |
+| Source | What We Inherited | What We Added |
 |:---|:---|:---|
-| **GenericAgent** | Execution framework (StepOutcome, dispatch, Goal Mode) | [lsdefine/GenericAgent](https://github.com/lsdefine/GenericAgent) |
-| **STORM (original)** | Dynamic perspective discovery | [Shao et al., NAACL 2024](https://arxiv.org/abs/2402.14207) |
-| **STORM (community)** | 4-stage framework + contradiction mapping + peer review | [storm-research-method](https://github.com/kamilwpaczce-svg/storm-research-method) |
-| **Caesar** | Generator-Verifier adversarial loop | Liang et al., 2026 |
-
-> The original STORM paper outputs Wikipedia-style articles. The community fork added contradiction mapping and peer review. This project adds enforced adversarial gating and dynamic lenses that work as first-class tool identities.
+| **GenericAgent** | Execution framework, Goal Mode, layered memory skeleton | Research-specific tools, knowledge-domain memory layers (L1-L3) |
+| **STORM** (Shao et al., NAACL 2024) | Multi-perspective research framework | Dynamic lens discovery (generated from search, not pre-defined), first-class tool identities for lenses, enforced adversarial gate, fan-out sub-agents |
+| **STORM community** | Contradiction mapping, peer review mechanisms | Tight integration with adversarial gate — gated findings flow into peer review |
+| **Caesar** (Liang et al., 2026) | Generator-Verifier adversarial loop concept | Hard-gated pipeline enforcement — the loop blocks, not just suggests |
 
 ---
 
@@ -194,12 +161,12 @@ DeDoldrums fuses four lines of work:
 
 Built on the shoulders of [**GenericAgent**](https://github.com/lsdefine/GenericAgent) — the `StepOutcome`-dispatch pattern, Goal Mode self-driven loop, and layered memory design are directly ported from GA.
 
-Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for multi-perspective analysis, and the community fork for contradiction mapping + peer review mechanisms.
+Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for the multi-perspective research framework that inspired our dynamic lens approach, and the [community fork](https://github.com/kamilwpaczce-svg/storm-research-method) for contradiction mapping and peer review mechanisms.
 
-Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework.
+Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework that inspired the gate design.
 
 ---
 
-## 📄 License
+## License
 
 [MIT](LICENSE)
