@@ -47,7 +47,7 @@ class ChallengeToolTests(unittest.TestCase):
             },
         )
 
-    def test_challenge_timeout_returns_a_result(self) -> None:
+    def test_challenge_timeout_returns_inconclusive_verdict(self) -> None:
         original_timeout = tools.CHALLENGE_TIMEOUT_SECONDS
         tools.CHALLENGE_TIMEOUT_SECONDS = 0.01
         try:
@@ -55,7 +55,10 @@ class ChallengeToolTests(unittest.TestCase):
         finally:
             tools.CHALLENGE_TIMEOUT_SECONDS = original_timeout
 
-        self.assertIn("timed out", result["challenges"]["logic_flaw"])
+        verdict = result["challenges"]["logic_flaw"]
+        self.assertIsInstance(verdict, dict)
+        self.assertEqual(verdict["verdict"], "inconclusive")
+        self.assertIn("timed out", verdict["detail"])
 
 
 if __name__ == "__main__":

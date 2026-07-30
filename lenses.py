@@ -127,8 +127,15 @@ async def discover_lenses(
   "name": "中文名称",
   "identity": "一句话描述这个视角的身份和看问题的角度",
   "concerns": "这个视角最关心什么（逗号分隔）",
-  "blind_spot": "这个视角容易忽略什么"
-}}"""
+  "blind_spot": "这个视角容易忽略什么",
+  "dimension": "practitioner | skeptic | academic | other"
+}}
+
+dimension 字段说明:
+- practitioner: 从业者、实践者、一线操作人员视角
+- skeptic: 怀疑论者、挑战主流观点、寻找反证的视角
+- academic: 学术研究者、依赖文献和严谨方法的视角
+- other: 不属于以上三类的其他视角（如经济学、历史学、系统思维等）"""
 
     dynamic_lenses: list[dict[str, Any]] = []
     try:
@@ -155,28 +162,36 @@ async def discover_lenses(
         LOGGER.warning("Dynamic lens discovery request failed: %s", exc)
 
     missing_types = _find_gaps(dynamic_lenses)
-    fallback_lenses = [LENS_LIBRARY[key] for key in missing_types[:2]]
+    fallback_lenses = [LENS_LIBRARY[key] for key in missing_types]
     return dynamic_lenses + fallback_lenses
 
 
 def _find_gaps(dynamic_lenses: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Identify missing practitioner, skeptic, and academic coverage."""
-    current_angles: set[str] = set()
+    """Identify missing practitioner, skeptic, and academic coverage via dimension field.
+
+    Falls back to Chinese keyword matching when the LLM omits the ``dimension`` field.
+    """
+    covered: set[str] = set()
     for lens in dynamic_lenses:
-        identity = lens.get("identity", "")
-        concerns = lens.get("concerns", "")
-        text = f"{identity}{concerns}"
-        if any(keyword in text for keyword in ["从业", "实践", "操作", "每天"]):
-            current_angles.add("practitioner")
-        if any(keyword in text for keyword in ["反对", "怀疑", "挑战", "批判", "反面"]):
-            current_angles.add("skeptic")
-        if any(keyword in text for keyword in ["学术", "研究", "文献", "论文"]):
-            current_angles.add("academic")
+        dim = lens.get("dimension", "")
+        if isinstance(dim, str) and dim.strip() in {"practitioner", "skeptic", "academic", "other"}:
+            covered.add(dim.strip())
+        else:
+            # Legacy fallback: Chinese keyword detection
+            identity = str(lens.get("identity", ""))
+            concerns = str(lens.get("concerns", ""))
+            text = f"{identity}{concerns}"
+            if any(kw in text for kw in ["从业", "实践", "操作", "每天"]):
+                covered.add("practitioner")
+            if any(kw in text for kw in ["反对", "怀疑", "挑战", "批判", "反面"]):
+                covered.add("skeptic")
+            if any(kw in text for kw in ["学术", "研究", "文献", "论文"]):
+                covered.add("academic")
 
     gaps: list[str] = []
-    for required_lens in ("skeptic", "practitioner", "academic"):
-        if required_lens not in current_angles:
-            gaps.append(required_lens)
+    for required in ("skeptic", "practitioner", "academic"):
+        if required not in covered:
+            gaps.append(required)
     return gaps
 
 
@@ -210,7 +225,11 @@ def _parse_dynamic_lenses(content: Any) -> list[dict[str, Any]]:
             for field in required_fields
         ):
             continue
-        lenses.append({field: item[field].strip() for field in required_fields})
+        lens: dict[str, Any] = {field: item[field].strip() for field in required_fields}
+        dim = item.get("dimension", "")
+        if isinstance(dim, str) and dim.strip():
+            lens["dimension"] = dim.strip()
+        lenses.append(lens)
         if len(lenses) == 5:
             break
     return lenses

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from typing import Any, Optional
+import uuid
 
 try:
     from .lenses import discover_lenses  # pyright: ignore[reportMissingImports]
@@ -16,7 +17,7 @@ try:
         STAGE35_ADVERSARIAL_GATE,
         STAGE4_PEER_REVIEW,
     )
-    from .tools import do_challenge, do_crystallize, do_explore, do_reflect, web_search  # pyright: ignore[reportMissingImports]
+    from .tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - direct script execution path.
     from lenses import discover_lenses  # pyright: ignore[reportMissingImports]
     from memory import MemoryStore
@@ -27,7 +28,7 @@ except ImportError:  # pragma: no cover - direct script execution path.
         STAGE35_ADVERSARIAL_GATE,
         STAGE4_PEER_REVIEW,
     )
-    from tools import do_challenge, do_crystallize, do_explore, do_reflect, web_search  # pyright: ignore[reportMissingImports]
+    from tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
 
 
 @dataclass
@@ -98,14 +99,28 @@ class ResearchHandler:
         if self.stage == 3.5:
             target = str(args.get("target", ""))[:120]
             if not target:
-                target = f"finding_{len(self.adversarial_results)}"
-            # Check if LLM found issues — simple heuristic
+                target = f"finding_{uuid.uuid4().hex[:8]}"
+            # Language-independent verdict: structured dicts, not substring matching
             challenges = result.get("challenges", {})
-            has_issues = any(
-                v and "没问题" not in str(v) and "无问题" not in str(v) and "没有发现" not in str(v)
-                for v in challenges.values()
-            )
-            status = "needs_revision" if has_issues else "challenged"
+            has_issues = False
+            has_inconclusive = False
+            for verdict in challenges.values():
+                if isinstance(verdict, dict):
+                    v = verdict.get("verdict", "")
+                    if v == "issues_found":
+                        has_issues = True
+                    elif v == "inconclusive":
+                        has_inconclusive = True
+                else:
+                    # Legacy fallback: raw string response (shouldn't happen post-migration)
+                    has_inconclusive = True
+
+            if has_issues:
+                status = "needs_revision"
+            elif has_inconclusive:
+                status = "inconclusive"
+            else:
+                status = "challenged"
             self.adversarial_results[target] = {"status": status, "data": result}
         return StepOutcome(result)
 
@@ -115,6 +130,33 @@ class ResearchHandler:
         result = await do_crystallize(args, self.memory)
         if self.on_status:
             self.on_status("Crystallization saved; continuing research…")
+        return StepOutcome(result)
+
+    async def do_sub_research(self, args: dict[str, Any], response: Any) -> StepOutcome:
+        """Fan-out parallel sub-agents: one ``sub_research`` call with multiple lens tasks.
+
+        Delegates to the module-level ``do_sub_research`` which pre-fetches
+        web search per task and runs concurrent single-turn LLM analysis.
+        Lens registration ensures the Stage 1 gate (``lenses_used >= 3``)
+        advances correctly when this tool replaces sequential ``reflect`` calls.
+        """
+        tasks = args.get("tasks", [])
+        if not tasks:
+            return StepOutcome({"error": "tasks is required"})
+
+        if self.on_status:
+            lens_labels = ", ".join(str(t.get("lens", "")) for t in tasks[:3])
+            self.on_status(f"Parallel sub-research: {len(tasks)} lenses ({lens_labels})…")
+
+        result = await do_sub_research(tasks, self.llm, self.memory, on_status=self.on_status)
+
+        # Register every lens so the Stage 1 gate (handler.py:166) advances.
+        for task in tasks:
+            lens = str(task.get("lens", ""))
+            if lens:
+                self.lenses_used.add(lens)
+
+        self.findings.append({"type": "sub_research", "data": result})
         return StepOutcome(result)
 
     async def get_stage_prompt(self) -> Optional[str]:

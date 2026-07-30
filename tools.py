@@ -22,6 +22,8 @@ except ImportError:  # Supports direct execution from the package directory.
 
 
 CHALLENGE_TIMEOUT_SECONDS = 45.0
+SUB_RESEARCH_TIMEOUT_SECONDS = 60.0
+MAX_SUB_RESULT_CHARS = 3000
 
 
 TOOLS_SCHEMA = [
@@ -105,6 +107,32 @@ TOOLS_SCHEMA = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "sub_research",
+            "description": "派发多个子代理并行研究不同视角。每个子代理独立搜索 web 并从一个透镜视角分析，所有结果并行执行后汇总返回。用于 Stage 1 多视角并行扫描——一次调用覆盖 2-3 个不同透镜，替代逐个串行 reflect。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tasks": {
+                        "type": "array",
+                        "maxItems": 3,
+                        "description": "要并行执行的子研究任务列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "lens": {"type": "string", "description": "应用的思维透镜名称（如 skeptic, economist, historian 等）"},
+                                "question": {"type": "string", "description": "该子代理的研究子问题"},
+                            },
+                            "required": ["lens", "question"],
+                        },
+                    },
+                },
+                "required": ["tasks"],
+            },
+        },
+    },
 ]
 
 
@@ -176,11 +204,17 @@ async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = N
         return {"target": target, "challenges": {}, "error": f"unsupported mode: {mode}"}
 
     modes_to_run = challenge_prompts if mode == "all" else {mode: challenge_prompts[mode]}
-    pairs = await asyncio.gather(*(
+    gathered = await asyncio.gather(*(
         _run_challenge_mode(current_mode, instruction, target, context, llm_client, on_status)
         for current_mode, instruction in modes_to_run.items()
-    ))
-    results = dict(pairs)
+    ), return_exceptions=True)
+    results: dict[str, dict[str, str]] = {}
+    for item in gathered:
+        if isinstance(item, BaseException):
+            results["unknown"] = {"mode": "unknown", "verdict": "inconclusive", "detail": f"{type(item).__name__}: {item}"}
+        else:
+            mode_name, verdict = item
+            results[mode_name] = verdict
     return {"target": target, "challenges": results}
 
 
@@ -191,7 +225,7 @@ async def _run_challenge_mode(
     context: str,
     llm_client: Any,
     on_status: Any = None,
-) -> tuple[str, str]:
+) -> tuple[str, dict[str, str]]:
     if on_status:
         label = {
             "logic_flaw": "Logic check",
@@ -200,20 +234,38 @@ async def _run_challenge_mode(
             "alternative_explanation": "Alternative explanations",
         }.get(current_mode, current_mode)
         on_status(f"Challenge: {label}…")
-    prompt = f"""作为严格的同行评审者，{instruction}。
+    prompt = f"""As a rigorous peer reviewer, {instruction}.
 
-论点: {target}
-背景: {context}
+Claim: {target}
+Context: {context}
 
-请直接指出问题，不要客套。如果没问题就说没问题。"""
+Be direct. If there are real issues, state them clearly. If the claim holds up, say so.
+
+End your response with exactly one of these verdict lines:
+VERDICT: ISSUES_FOUND
+VERDICT: CLEAN"""
     try:
         result = await asyncio.wait_for(
             _call_llm(llm_client, prompt, 0.3, role="content_review"),
             timeout=CHALLENGE_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        result = f"Challenge timed out after {CHALLENGE_TIMEOUT_SECONDS:g} seconds."
-    return current_mode, result
+        return current_mode, {
+            "mode": current_mode,
+            "verdict": "inconclusive",
+            "detail": f"Challenge timed out after {CHALLENGE_TIMEOUT_SECONDS:g}s.",
+        }
+
+    text = str(result).strip()
+    if "VERDICT: ISSUES_FOUND" in text:
+        verdict = "issues_found"
+    elif "VERDICT: CLEAN" in text:
+        verdict = "clean"
+    else:
+        # Model didn't follow the verdict format — treat as inconclusive
+        verdict = "inconclusive"
+
+    return current_mode, {"mode": current_mode, "verdict": verdict, "detail": text}
 
 
 async def do_crystallize(args: dict[str, Any], memory: MemoryStore) -> dict[str, str]:
@@ -233,6 +285,162 @@ async def do_crystallize(args: dict[str, Any], memory: MemoryStore) -> dict[str,
         memory.save_pitfall(insight)
 
     return {"crystallized": category, "stored_in": memory.get_path(category), "trigger": trigger}
+
+
+SUB_RESEARCH_PROMPT = """你是一个独立的研究子代理，从「{lens_name}」的视角分析以下问题。
+
+## 研究问题
+{question}
+
+## 视角身份
+{identity}
+
+## 关注点
+{concerns}
+
+## 视角盲点（容易忽略的）
+{blind_spot}
+
+## 预检索结果
+{pre_fetched}
+
+要求：基于以上预检索结果和你的视角身份，产出结构化的分析。包含：
+1. 关键发现（2-5 条，每条附带来源 URL）
+2. 这个视角揭示了什么其他人会忽略的张力或洞察？
+3. 需要进一步深挖的问题（1-3 个）
+
+使用 Markdown 格式。使用中文。控制在 500 字以内。"""
+
+
+async def do_sub_research(
+    tasks: list[dict[str, Any]],
+    llm_client: Any,
+    memory: MemoryStore,
+    on_status: Any = None,
+) -> dict[str, Any]:
+    """Fan-out parallel sub-agents: pre-fetch web search per task, then concurrent LLM analysis.
+
+    Each sub-agent gets:
+    - Its own web search results (pre-fetched via the module-level ``do_explore``)
+    - A narrow briefing with lens identity, concerns, and blind spot
+    - A single-turn LLM call — no tool-calling loops (v1 simplicity)
+
+    All sub-agents run concurrently via ``asyncio.gather`` inside a single
+    tool invocation — matching the ``do_challenge`` fan-out pattern.
+    """
+    if not tasks:
+        return {"task_results": [], "error": "tasks is required"}
+
+    # ── Phase 1: Pre-fetch web search for each task (fan-out) ──
+    async def _pre_fetch(task: dict[str, Any]) -> dict[str, Any]:
+        question = str(task.get("question", ""))
+        lens = str(task.get("lens", ""))
+        if on_status:
+            on_status(f"[sub:{lens}] Searching web…")
+        try:
+            result = await do_explore({"query": question, "source": "web"}, memory)
+        except Exception:
+            result = {"results": []}
+        return {"task": task, "search_result": result}
+
+    pre_fetched = await asyncio.gather(
+        *[_pre_fetch(t) for t in tasks],
+        return_exceptions=True,
+    )
+    normalized_pre = [
+        p if not isinstance(p, BaseException) else {"task": {}, "search_result": {"results": []}}
+        for p in pre_fetched
+    ]
+
+    # ── Phase 2: Fan-out single-turn LLM analysis per lens ──
+    async def _run_one(pf: dict[str, Any]) -> dict[str, Any]:
+        task = pf["task"]
+        lens = str(task.get("lens", ""))
+        question = str(task.get("question", ""))
+        search_result = pf["search_result"]
+
+        results_list = search_result.get("results", [])
+        if isinstance(results_list, list):
+            snippets = "\n".join(
+                f"- [{r.get('title', '')}]({r.get('url', '')}): {r.get('snippet', '')[:200]}"
+                for r in results_list[:5]
+            )
+        else:
+            snippets = str(results_list)[:2000]
+
+        lens_config = get_lens(lens)
+        if lens_config is None:
+            return {"lens": lens, "error": f"Unknown lens: {lens}"}
+
+        prompt = SUB_RESEARCH_PROMPT.format(
+            lens_name=lens_config["name"],
+            question=question,
+            identity=lens_config["identity"],
+            concerns=lens_config["concerns"],
+            blind_spot=lens_config["blind_spot"],
+            pre_fetched=snippets or "（无预检索结果）",
+        )
+
+        if on_status:
+            on_status(f"[sub:{lens}] Analyzing…")
+
+        try:
+            raw = await asyncio.wait_for(
+                _call_llm(llm_client, prompt, lens_config["temperature"], role="creative"),
+                timeout=SUB_RESEARCH_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return {
+                "lens": lens,
+                "lens_name": lens_config["name"],
+                "error": f"Sub-agent timed out after {SUB_RESEARCH_TIMEOUT_SECONDS:g}s",
+            }
+        except Exception as exc:
+            return {
+                "lens": lens,
+                "lens_name": lens_config["name"],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        truncated = raw[:MAX_SUB_RESULT_CHARS]
+        return {
+            "lens": lens,
+            "lens_name": lens_config["name"],
+            "question": question,
+            "summary": truncated,
+            "sources": [
+                r.get("url", "")
+                for r in (results_list if isinstance(results_list, list) else [])[:5]
+                if r.get("url")
+            ],
+        }
+
+    task_results = await asyncio.gather(
+        *[_run_one(pf) for pf in normalized_pre],
+        return_exceptions=True,
+    )
+
+    # Normalize any exceptions that escaped the inner try/except
+    normalized_results: list[dict[str, Any]] = []
+    for i, r in enumerate(task_results):
+        if isinstance(r, BaseException):
+            lens = tasks[i].get("lens", "") if i < len(tasks) else ""
+            normalized_results.append({"lens": lens, "error": f"{type(r).__name__}: {r}"})
+        else:
+            normalized_results.append(r)
+
+    # Build aggregated text for the main LLM's context window
+    aggregated_parts: list[str] = []
+    for r in normalized_results:
+        if "error" in r:
+            aggregated_parts.append(f"### {r.get('lens', '?')}: ERROR — {r['error']}")
+        else:
+            aggregated_parts.append(f"### {r['lens_name']} ({r['lens']})\n{r.get('summary', '')}")
+
+    return {
+        "task_results": normalized_results,
+        "aggregated": "\n\n".join(aggregated_parts),
+    }
 
 
 async def fetch_and_extract(url: str) -> str:
