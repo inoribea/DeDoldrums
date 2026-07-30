@@ -48,6 +48,7 @@ interface UseResearchReturn extends UseResearchState {
   reset: () => void;
   savedQuestion: string | null;
   latestStatus: string | null;
+  elapsedSeconds: number;
 }
 
 function truncate(text: string, max = 300): string {
@@ -85,7 +86,11 @@ function clearSession() {
 export function useResearch(): UseResearchReturn {
   const [state, setState] = useState<UseResearchState>(INITIAL_STATE);
   const [savedQuestion, setSavedQuestion] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const pollingRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const completedAtRef = useRef<number | null>(null);
   const findingsCountRef = useRef(0);
   const sessionIdRef = useRef<string | null>(null);
   const seenCountRef = useRef(0);
@@ -103,12 +108,16 @@ export function useResearch(): UseResearchReturn {
 
   const reset = useCallback(() => {
     stopPolling();
+    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
     startingRef.current = false;
     findingsCountRef.current = 0;
     seenCountRef.current = 0;
     sessionIdRef.current = null;
+    startedAtRef.current = null;
+    completedAtRef.current = null;
     stoppedRef.current = false;
     clearSession();
+    setElapsedSeconds(0);
     setState(INITIAL_STATE);
   }, [stopPolling]);
 
@@ -161,6 +170,7 @@ export function useResearch(): UseResearchReturn {
               },
             }));
           } else if (event.type === "complete") {
+            completedAtRef.current = Date.now();
             clearSession();
             setState((s) => ({
               ...s,
@@ -172,6 +182,7 @@ export function useResearch(): UseResearchReturn {
               statusLog: [],
             }));
           } else if (event.type === "error") {
+            completedAtRef.current = Date.now();
             clearSession();
             setState((s) => ({
               ...s,
@@ -244,6 +255,17 @@ export function useResearch(): UseResearchReturn {
       findingsCountRef.current = 0;
       seenCountRef.current = 0;
       setState({ ...INITIAL_STATE, status: "creating", currentStage: "-1", stageDescription: t(STAGES["-1"].descriptionKey) });
+      startedAtRef.current = Date.now();
+      completedAtRef.current = null;
+      setElapsedSeconds(0);
+      // Start 1-second timer tick
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      timerRef.current = window.setInterval(() => {
+        if (startedAtRef.current) {
+          const end = completedAtRef.current ?? Date.now();
+          setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
+        }
+      }, 1000);
 
       try {
         const base = window.location.origin;
@@ -319,7 +341,12 @@ export function useResearch(): UseResearchReturn {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // Cleanup timer on unmount
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearInterval(timerRef.current);
+  }, []);
+
   const latestStatus = state.statusLog.length > 0 ? state.statusLog[state.statusLog.length - 1] : null;
 
-  return { ...state, start, cancel, reset, savedQuestion, latestStatus };
+  return { ...state, start, cancel, reset, savedQuestion, latestStatus, elapsedSeconds };
 }

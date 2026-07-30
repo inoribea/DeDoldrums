@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertCircle, Loader2, RotateCcw, Search, Square } from "lucide-react";
+import { AlertCircle, Clock, Loader2, RotateCcw, Search, Square } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export default function Home() {
     statusLog,
     savedQuestion,
     latestStatus,
+    elapsedSeconds,
   } = research;
 
   // Restore saved question on reconnect
@@ -46,6 +47,12 @@ export default function Home() {
   const showError = status === "error";
 
   const canSubmit = question.trim().length > 0 && !isBusy;
+
+  function formatTime(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -152,6 +159,10 @@ export default function Home() {
                   {stageDescription}
                 </span>
               )}
+              <span className="ml-auto flex items-center gap-1.5 font-mono text-sm tabular-nums text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                {formatTime(elapsedSeconds)}
+              </span>
             </div>
             <StageStepper
               currentStage={currentStage}
