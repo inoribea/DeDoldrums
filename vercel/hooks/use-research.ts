@@ -228,9 +228,9 @@ export function useResearch(): UseResearchReturn {
           })
           .then((data) => {
             if (!data || stoppedRef.current) return;
-            // On reconnect: adopt server timestamp, or fall back to now
+            // On reconnect: adopt server timestamp (seconds → ms), or fall back to now
             if (!startedAtRef.current) {
-              startedAtRef.current = data.startedAt ?? Date.now();
+              startedAtRef.current = data.startedAt ? data.startedAt * 1000 : Date.now();
             }
             const msgCount = data.messages?.length || 0;
             processMessages(data.messages || []);
