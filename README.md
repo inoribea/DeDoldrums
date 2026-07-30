@@ -11,7 +11,9 @@
 # DeDoldrums
 
 > **Know your shore by storm.**
+>
 > *The streaked shearwater survives typhoons not by bravery, but by bearings.*
+>
 > **Don't flee uncertainty. Don't chase it. Navigate it—with the shore in mind.**
 
 A research agent that turns conflicting perspectives into tested insight — navigating disagreement with bearings, not bravado.

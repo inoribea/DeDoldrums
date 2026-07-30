@@ -11,14 +11,16 @@
 # DeDoldrums
 
 > **Know your shore by storm.**
+>
 > *The streaked shearwater survives typhoons not by bravery, but by bearings.*
+>
 > **Don't flee uncertainty. Don't chase it. Navigate it—with the shore in mind.**
 
 一个将冲突视角淬炼为经得起检验的洞见、以方位感而非蛮勇穿越分歧的研究 Agent。
 
 基于 [GenericAgent](https://github.com/lsdefine/GenericAgent) 构建，受 [STORM](https://arxiv.org/abs/2402.14207) 启发。
 
-成年斑尾鹱能够判断陆地的方位，缺乏这种方位感的幼鸟更容易在风暴后迷航。DeDoldrums 为议题建立同样的方位感：先画出矛盾地图，再选择审慎的航线。
+成年bai e鹱能够判断陆地的方位，缺乏这种方位感的幼鸟更容易在风暴后迷航。DeDoldrums 为议题建立同样的方位感：先画出矛盾地图，再选择审慎的航线。
 
 ---
 
