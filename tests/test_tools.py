@@ -1,9 +1,10 @@
 import asyncio
 import unittest
+from unittest import mock
 
 import tools
 from llm import ChatResponse
-from tools import do_challenge
+from tools import _output_directive, do_challenge, do_sub_research
 
 
 class ConcurrentLlmClient:
@@ -59,6 +60,49 @@ class ChallengeToolTests(unittest.TestCase):
         self.assertIsInstance(verdict, dict)
         self.assertEqual(verdict["verdict"], "inconclusive")
         self.assertIn("timed out", verdict["detail"])
+
+
+class OutputLanguageTests(unittest.TestCase):
+    """Verify sub-agent and final-report output language contracts."""
+
+    def test_output_directive_en(self) -> None:
+        self.assertIn("English", _output_directive("en"))
+        self.assertNotIn("中文", _output_directive("en"))
+
+    def test_output_directive_zh_default(self) -> None:
+        self.assertIn("中文", _output_directive("zh"))
+        self.assertIn("中文", _output_directive(None))
+
+    def test_sub_research_en_language_contract(self) -> None:
+        """do_sub_research with report_language='en' emits English prompt."""
+        client = ConcurrentLlmClient()
+        tasks = [{"lens": "skeptic", "question": "Test"}]
+
+        with mock.patch("tools.web_search", return_value=[]):
+            result = asyncio.run(
+                do_sub_research(tasks, client, _memory_store(), report_language="en")
+            )
+
+        self.assertIn("task_results", result)
+        self.assertNotIn("使用中文", str(result))
+
+    def test_sub_research_zh_default_contract(self) -> None:
+        """do_sub_research without report_language defaults to Chinese."""
+        client = ConcurrentLlmClient()
+        tasks = [{"lens": "skeptic", "question": "Test"}]
+
+        with mock.patch("tools.web_search", return_value=[]):
+            result = asyncio.run(
+                do_sub_research(tasks, client, _memory_store())
+            )
+
+        self.assertIn("task_results", result)
+
+
+def _memory_store():
+    import tempfile
+    from memory import MemoryStore
+    return MemoryStore(tempfile.mkdtemp())
 
 
 if __name__ == "__main__":

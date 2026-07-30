@@ -309,7 +309,14 @@ SUB_RESEARCH_PROMPT = """你是一个独立的研究子代理，从「{lens_name
 2. 这个视角揭示了什么其他人会忽略的张力或洞察？
 3. 需要进一步深挖的问题（1-3 个）
 
-使用 Markdown 格式。使用中文。控制在 500 字以内。"""
+{output_directive}控制在 500 字以内。"""
+
+
+def _output_directive(language: str | None) -> str:
+    """Return the output-language instruction for sub-agents and final reports."""
+    if language == "en":
+        return "Respond in English. "
+    return "使用中文。 "
 
 
 async def do_sub_research(
@@ -317,6 +324,7 @@ async def do_sub_research(
     llm_client: Any,
     memory: MemoryStore,
     on_status: Any = None,
+    report_language: str | None = None,
 ) -> dict[str, Any]:
     """Fan-out parallel sub-agents: pre-fetch web search per task, then concurrent LLM analysis.
 
@@ -330,6 +338,8 @@ async def do_sub_research(
     """
     if not tasks:
         return {"task_results": [], "error": "tasks is required"}
+
+    output_directive = _output_directive(report_language)
 
     # ── Phase 1: Pre-fetch web search for each task (fan-out) ──
     async def _pre_fetch(task: dict[str, Any]) -> dict[str, Any]:
@@ -379,6 +389,7 @@ async def do_sub_research(
             concerns=lens_config["concerns"],
             blind_spot=lens_config["blind_spot"],
             pre_fetched=snippets or "（无预检索结果）",
+            output_directive=output_directive,
         )
 
         if on_status:

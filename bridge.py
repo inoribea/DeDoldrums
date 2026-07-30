@@ -62,6 +62,7 @@ class ResearchSession:
 
     sid: str
     question: str
+    report_language: str | None = None
     memory: Any = field(default_factory=lambda: MemoryStore("memory/"))
     handler: Any = None
     messages: list[str] = field(default_factory=list)
@@ -106,8 +107,11 @@ class ResearchBridge:
         question = str((body or {}).get("question", "")).strip()
         if not question:
             return web.json_response({"error": "question is required"}, status=400)
+        language = str((body or {}).get("language", "")).strip() or None
+        if language not in (None, "en", "zh"):
+            language = None  # default: follow system prompt language (Chinese)
         sid = f"rs_{uuid.uuid4().hex[:12]}"
-        self.sessions[sid] = ResearchSession(sid=sid, question=question)
+        self.sessions[sid] = ResearchSession(sid=sid, question=question, report_language=language)
         host = request.headers.get("Host", "")
         return web.json_response({"sessionId": sid, "question": question, "bridgeUrl": f"http://{host}"})
 
@@ -145,7 +149,7 @@ class ResearchBridge:
             session.handler.on_status = on_status
             session.handler.on_stage = on_stage
             logger.info("Starting research sid=%s thread=%s question=%s", session.sid, thread_name, session.question[:80])
-            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler))
+            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler, report_language=session.report_language))
             if not isinstance(brief, str) or not brief.strip():
                 raise RuntimeError("Research completed without a final brief.")
             logger.info(

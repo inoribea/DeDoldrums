@@ -247,10 +247,14 @@ export function useResearch(): UseResearchReturn {
 
       try {
         const base = window.location.origin;
+        // Read language from localStorage to pass to the bridge
+        let lang: string | undefined;
+        try { lang = window.localStorage.getItem("dedoldrums-lang") || undefined; } catch { /* ignore */ }
+
         const newResp = await fetch(`${base}/api/session/new`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: trimmed }),
+          body: JSON.stringify({ question: trimmed, language: lang }),
         });
         if (!newResp.ok) throw new Error(`Failed to create session (${newResp.status})`);
 

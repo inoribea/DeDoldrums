@@ -43,12 +43,13 @@ class StepOutcome:
 class ResearchHandler:
     """Route tools and advance the distinct stages of the STORM pipeline."""
 
-    def __init__(self, question: str, memory: MemoryStore, llm_client: Any, on_status: Any = None, on_stage: Any = None) -> None:
+    def __init__(self, question: str, memory: MemoryStore, llm_client: Any, on_status: Any = None, on_stage: Any = None, report_language: str | None = None) -> None:
         self.question = question
         self.memory = memory
         self.llm = llm_client
         self.on_status = on_status
         self.on_stage = on_stage
+        self.report_language = report_language
         self.stage: int | float = -1
         self.findings: list[dict[str, Any]] = []
         self.lenses_used: set[str] = set()
@@ -148,7 +149,7 @@ class ResearchHandler:
             lens_labels = ", ".join(str(t.get("lens", "")) for t in tasks[:3])
             self.on_status(f"Parallel sub-research: {len(tasks)} lenses ({lens_labels})…")
 
-        result = await do_sub_research(tasks, self.llm, self.memory, on_status=self.on_status)
+        result = await do_sub_research(tasks, self.llm, self.memory, on_status=self.on_status, report_language=self.report_language)
 
         # Register every lens so the Stage 1 gate (handler.py:166) advances.
         for task in tasks:

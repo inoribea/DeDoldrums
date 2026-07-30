@@ -17,12 +17,12 @@ try:
     from .handler import ResearchHandler  # pyright: ignore[reportMissingImports]
     from .memory import MemoryStore
     from .prompts import SYSTEM_PROMPT_TEMPLATE  # pyright: ignore[reportMissingImports]
-    from .tools import TOOLS_SCHEMA  # pyright: ignore[reportMissingImports]
+    from .tools import TOOLS_SCHEMA, _output_directive  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - direct script execution path.
     from handler import ResearchHandler  # pyright: ignore[reportMissingImports]
     from memory import MemoryStore
     from prompts import SYSTEM_PROMPT_TEMPLATE  # pyright: ignore[reportMissingImports]
-    from tools import TOOLS_SCHEMA  # pyright: ignore[reportMissingImports]
+    from tools import TOOLS_SCHEMA, _output_directive  # pyright: ignore[reportMissingImports]
 
 
 REFINE_QUESTION_PROMPT = (
@@ -36,9 +36,11 @@ REFINE_QUESTION_PROMPT = (
     "原始问题: {question}"
 )
 
-FINAL_REPORT_PROMPT = (
-    "基于以上四阶段研究，生成最终的完整研究简报。包含: 摘要、关键发现（标注置信度）、"
-    "隐藏连接、可操作建议、前沿问题和已知局限。"
+FINAL_REPORT_PROMPT_TEMPLATE = (
+    "Based on the completed four-stage research, generate the final comprehensive "
+    "research brief. Include: summary, key findings (with confidence scores), "
+    "hidden connections, actionable recommendations, frontier questions, and "
+    "known limitations.\n\n{output_directive}"
 )
 
 FINAL_REPORT_RETRY_PROMPT = (
@@ -255,6 +257,7 @@ async def research_loop(
     on_status: Any = None,
     on_stage: Any = None,
     handler: Any = None,
+    report_language: str | None = None,
 ) -> str:
     """Run the full -1 → 4 research pipeline and return its final brief.
 
@@ -287,13 +290,14 @@ async def research_loop(
 
     # ── Research pipeline ──
     if handler is None:
-        handler = ResearchHandler(question, memory, llm_client, on_status=on_status, on_stage=on_stage)
+        handler = ResearchHandler(question, memory, llm_client, on_status=on_status, on_stage=on_stage, report_language=report_language)
     else:
         handler.question = question
         handler.memory = memory
         handler.llm = llm_client
         handler.on_status = on_status
         handler.on_stage = on_stage
+        handler.report_language = report_language
     _status("Starting multi-perspective research pipeline…")
     relevant_memories = memory.search(
         refined_question,
@@ -318,7 +322,9 @@ async def research_loop(
             f"~{total_chars // 4} estimated tokens)…"
         )
 
-        retry_messages = compact + [{"role": "user", "content": FINAL_REPORT_PROMPT}]
+        output_directive = _output_directive(report_language)
+        final_report_prompt = FINAL_REPORT_PROMPT_TEMPLATE.format(output_directive=output_directive)
+        retry_messages = compact + [{"role": "user", "content": final_report_prompt}]
         last_failure = "empty response"
         for attempt in range(FINAL_REPORT_ATTEMPTS):
             response = await llm_client.chat(
