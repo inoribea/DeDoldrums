@@ -63,6 +63,7 @@ class ResearchSession:
     sid: str
     question: str
     report_language: str | None = None
+    started_at: float | None = None
     memory: Any = field(default_factory=lambda: MemoryStore("memory/"))
     handler: Any = None
     messages: list[str] = field(default_factory=list)
@@ -149,6 +150,7 @@ class ResearchBridge:
             session.handler.on_status = on_status
             session.handler.on_stage = on_stage
             logger.info("Starting research sid=%s thread=%s question=%s", session.sid, thread_name, session.question[:80])
+            session.started_at = time.time()
             brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler, report_language=session.report_language))
             if not isinstance(brief, str) or not brief.strip():
                 raise RuntimeError("Research completed without a final brief.")
@@ -224,7 +226,11 @@ class ResearchBridge:
         if session is None:
             return web.json_response({"error": "session not found"}, status=404)
         with session.lock:
-            return web.json_response({"done": session.done, "messages": session.messages})
+            return web.json_response({
+                "done": session.done,
+                "messages": session.messages,
+                "startedAt": session.started_at,
+            })
 
     async def handle_session_cancel(self, request: web.Request) -> web.Response:
         session = self.sessions.get(request.match_info["sid"])

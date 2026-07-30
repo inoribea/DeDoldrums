@@ -198,10 +198,19 @@ export function useResearch(): UseResearchReturn {
   );
 
   const setupPolling = useCallback(
-    (sid: string, question: string) => {
+    (sid: string, question: string, knownStartedAt?: number) => {
       stoppedRef.current = false;
       sessionIdRef.current = sid;
       saveSession(sid, question);
+
+      if (knownStartedAt) {
+        startedAtRef.current = knownStartedAt;
+        if (timerRef.current !== null) window.clearInterval(timerRef.current);
+        timerRef.current = window.setInterval(() => {
+          const end = completedAtRef.current ?? Date.now();
+          setElapsedSeconds(Math.floor((end - knownStartedAt) / 1000));
+        }, 1000);
+      }
 
       let pollCount = 0;
       const base = window.location.origin;
@@ -214,10 +223,21 @@ export function useResearch(): UseResearchReturn {
             if (!r.ok) {
               throw new Error(`History request failed with ${r.status}`);
             }
-            return r.json() as Promise<{ done: boolean; messages: string[] }>;
+            return r.json() as Promise<{ done: boolean; messages: string[]; startedAt?: number }>;
           })
           .then((data) => {
             if (!data || stoppedRef.current) return;
+            // Use server-stored startedAt if we don't have one yet
+            if (!startedAtRef.current && data.startedAt) {
+              startedAtRef.current = data.startedAt;
+              if (timerRef.current !== null) window.clearInterval(timerRef.current);
+              timerRef.current = window.setInterval(() => {
+                const end = completedAtRef.current ?? Date.now();
+                if (startedAtRef.current) {
+                  setElapsedSeconds(Math.floor((end - startedAtRef.current) / 1000));
+                }
+              }, 1000);
+            }
             const msgCount = data.messages?.length || 0;
             processMessages(data.messages || []);
             if (data.done) {
