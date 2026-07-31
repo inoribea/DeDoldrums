@@ -13,7 +13,7 @@ from agent_loop import (
     _no_tool_retry_prompt,
     research_loop,
 )
-from llm import ChatResponse, FunctionCall, ToolCall
+from llm import ChatResponse
 from memory import MemoryStore
 from tools import do_crystallize
 
@@ -63,54 +63,22 @@ class FakeLlmClient:
 
 
 class ResearchLoopTests(unittest.TestCase):
-    def test_peer_review_response_is_included_in_final_report_context(self) -> None:
+    def test_final_brief_generated_directly_after_refinement(self) -> None:
+        """Stage >= 4 triggers final brief generation directly — no peer review step."""
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review: revise the timeline claim."),
             ChatResponse(content="Final research brief"),
         ])
 
         brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
         self.assertEqual(brief, "Final research brief")
-        final_request = client.requests[-1]
-        self.assertTrue(
-            any(
-                message.get("role") == "assistant"
-                and message.get("content") == "Peer review: revise the timeline claim."
-                for message in final_request
-            )
-        )
-        self.assertEqual(client.calls[1], ([], "tool_calling"))
-        self.assertEqual(client.calls[2], ([], "conversational"))
-
-    def test_final_peer_review_rejects_tool_calls(self) -> None:
-        client = FakeLlmClient([
-            ChatResponse(content="Refined question"),
-            ChatResponse(tool_calls=[ToolCall(
-                id="unexpected-tool",
-                function=FunctionCall(name="challenge", arguments="{}"),
-            )]),
-        ])
-
-        with self.assertRaisesRegex(RuntimeError, "unexpected tool calls"):
-            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
-
-        self.assertEqual(client.calls[1], ([], "tool_calling"))
-
-    def test_empty_final_peer_review_raises(self) -> None:
-        client = FakeLlmClient([
-            ChatResponse(content="Refined question"),
-            ChatResponse(content="   "),
-        ])
-
-        with self.assertRaisesRegex(RuntimeError, "peer review was empty"):
-            asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
+        self.assertEqual(client.calls[0], (None, "conversational"))
+        self.assertEqual(client.calls[1], ([], "conversational"))
 
     def test_empty_final_brief_retries_once(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(content=""),
             ChatResponse(content="Recovered final research brief"),
         ])
@@ -118,12 +86,11 @@ class ResearchLoopTests(unittest.TestCase):
         brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
         self.assertEqual(brief, "Recovered final research brief")
-        self.assertEqual(len(client.requests), 4)
+        self.assertEqual(len(client.requests), 3)
 
     def test_empty_final_brief_after_retries_returns_recovered_brief(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(content="   "),
             ChatResponse(content=""),
             ChatResponse(content=""),
@@ -132,12 +99,10 @@ class ResearchLoopTests(unittest.TestCase):
         brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
         self.assertIn("Research brief (recovered)", brief)
-        self.assertIn("Peer review", brief)
 
     def test_empty_api_response_after_retries_returns_recovered_brief(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(error="Empty API response"),
             ChatResponse(error="Empty API response"),
             ChatResponse(error="Empty API response"),
@@ -147,12 +112,10 @@ class ResearchLoopTests(unittest.TestCase):
 
         self.assertIn("Research brief (recovered)", brief)
         self.assertIn("Failure reason: Empty API response", brief)
-        self.assertIn("Peer review", brief)
 
     def test_final_synthesis_calls_use_extended_timeout(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(content="Final research brief"),
         ])
 
@@ -161,12 +124,10 @@ class ResearchLoopTests(unittest.TestCase):
         self.assertEqual(brief, "Final research brief")
         self.assertIsNone(client.kwargs[0].get("timeout"))
         self.assertEqual(client.kwargs[1].get("timeout"), FINAL_SYNTHESIS_TIMEOUT_SECONDS)
-        self.assertEqual(client.kwargs[2].get("timeout"), FINAL_SYNTHESIS_TIMEOUT_SECONDS)
 
     def test_final_brief_error_retry_does_not_grow_payload(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(error="The read operation timed out"),
             ChatResponse(error="The read operation timed out"),
             ChatResponse(error="The read operation timed out"),
@@ -175,9 +136,9 @@ class ResearchLoopTests(unittest.TestCase):
         brief = asyncio.run(research_loop(client, "Test question", handler=FinalReviewHandler()))
 
         self.assertIn("Research brief (recovered)", brief)
-        final_requests = client.requests[2:]
+        final_requests = client.requests[1:]
         self.assertEqual(len(final_requests), 3)
-        self.assertEqual([len(request) for request in final_requests], [4, 4, 4])
+        self.assertEqual([len(request) for request in final_requests], [3, 3, 3])
         self.assertFalse(any(
             message.get("content") == FINAL_REPORT_RETRY_PROMPT
             for request in final_requests
@@ -187,7 +148,6 @@ class ResearchLoopTests(unittest.TestCase):
     def test_empty_final_brief_retry_prompt_stays_local_to_final_request(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(content=""),
             ChatResponse(content="Recovered final research brief"),
         ])
@@ -239,7 +199,6 @@ class ResearchLoopTests(unittest.TestCase):
     def test_final_brief_error_retry_succeeds(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(content="Peer review"),
             ChatResponse(error="transient error"),
             ChatResponse(content="Recovered final research brief"),
         ])

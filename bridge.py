@@ -251,7 +251,7 @@ class ResearchBridge:
     @staticmethod
     def _stage_name(stage: int | float) -> str:
         names = {-1: "初始化", 0: "动态视角发现", 1: "多视角扫描", 2: "矛盾映射",
-                 3: "综合合成", 3.5: "对抗验证闸门", 4: "同行评审"}
+                 3: "综合合成", 3.5: "对抗验证闸门", 4: "生成最终简报"}
         return names.get(stage, f"Stage {stage}")
 
 

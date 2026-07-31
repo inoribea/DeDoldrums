@@ -19,14 +19,10 @@ class StageGateTests(unittest.TestCase):
             prompt = asyncio.run(handler.get_stage_prompt())
 
         self.assertEqual(handler.stage, 4)
-        self.assertIsNotNone(prompt)
-        assert isinstance(prompt, str)
-        self.assertIn("同行评审", prompt)
-        self.assertIn("finding_1", prompt)
-        self.assertEqual(
-            handler.adversarial_results["finding_1"]["status"],
-            "needs_revision",
-        )
+        # Stage 4 no longer returns a peer-review prompt — the adversarial
+        # gate is the final quality gate; the loop proceeds directly to the
+        # final report generator when it detects stage >= 4.
+        self.assertIsNone(prompt)
 
     async def _run_challenge_and_get_status(
         self, handler: ResearchHandler, challenge_result: dict
