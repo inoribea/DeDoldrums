@@ -82,6 +82,14 @@ TOOLS_SCHEMA = [
                         "enum": ["logic_flaw", "hidden_assumption", "missing_evidence", "alternative_explanation", "all"],
                         "description": "挑战模式",
                     },
+                    "skeleton": {
+                        "type": "boolean",
+                        "description": "为 true 时，先把结论剥离为逻辑骨架（核心断言+前提+推理链），挑战者只看骨架不看原始措辞，切断措辞层锚定。隐含前提会显式标注为未验证。",
+                    },
+                    "grounding": {
+                        "type": "boolean",
+                        "description": "为 true 时，先对结论做一手来源检索接地，挑战者基于外部证据而非纯模型记忆判断；无法从来源验证的断言会被标注为模型判断。",
+                    },
                 },
                 "required": ["target"],
             },
@@ -188,10 +196,25 @@ async def do_reflect(args: dict[str, Any], llm_client: Any) -> dict[str, str]:
 
 
 async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = None) -> dict[str, Any]:
-    """Stress-test a conclusion for logical and evidentiary weaknesses."""
+    """Stress-test a conclusion for logical and evidentiary weaknesses.
+
+    Two independent decorrelation mechanisms (see README Design Notes):
+
+    - ``skeleton=True``: strip the claim to its logical skeleton (assertion +
+      premises + inference chain) before challenging. The challenger never sees
+      the original wording — cutting context-level anchoring. Implicit premises
+      are surfaced and explicitly marked as unverified (they are exactly where
+      shared blind spots hide, and must not be silently laundered).
+    - ``grounding=True``: retrieve primary sources first and force the
+      challenger to ground its verdict in them. Assertions not verifiable from
+      sources are flagged as model judgment only — acknowledging the capability
+      ceiling that no prompt-level restructuring can lift.
+    """
     target = str(args.get("target", "")).strip()
     mode = args.get("mode", "all")
     context = str(args.get("context", ""))
+    skeleton = bool(args.get("skeleton", False))
+    grounding = bool(args.get("grounding", False))
     challenge_prompts = {
         "logic_flaw": "检查这个论点是否存在逻辑漏洞（循环论证、错误归因、非此即彼等）",
         "hidden_assumption": "找出这个论点依赖但未明说的隐藏假设",
@@ -203,9 +226,27 @@ async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = N
     if mode not in (*challenge_prompts, "all"):
         return {"target": target, "challenges": {}, "error": f"unsupported mode: {mode}"}
 
+    # ── Preparation phase (decorrelation, not verification) ──
+    skeleton_text: str | None = None
+    if skeleton:
+        skeleton_text = await _extract_skeleton(target, context, llm_client, on_status)
+
+    grounding_sources: str | None = None
+    if grounding:
+        grounding_sources = await _ground_via_search(target, llm_client, on_status)
+
     modes_to_run = challenge_prompts if mode == "all" else {mode: challenge_prompts[mode]}
     gathered = await asyncio.gather(*(
-        _run_challenge_mode(current_mode, instruction, target, context, llm_client, on_status)
+        _run_challenge_mode(
+            current_mode,
+            instruction,
+            target,
+            context,
+            skeleton_text,
+            grounding_sources,
+            llm_client,
+            on_status,
+        )
         for current_mode, instruction in modes_to_run.items()
     ), return_exceptions=True)
     results: dict[str, dict[str, str]] = {}
@@ -215,7 +256,87 @@ async def do_challenge(args: dict[str, Any], llm_client: Any, on_status: Any = N
         else:
             mode_name, verdict = item
             results[mode_name] = verdict
-    return {"target": target, "challenges": results}
+    return {
+        "target": target,
+        "challenges": results,
+        "skeletonized": skeleton,
+        "grounded": grounding,
+    }
+
+
+SKELETON_EXTRACT_PROMPT = """你是一个论证结构分析器。将以下结论剥离为逻辑骨架，完全忽略措辞、修辞、语气、置信度信号和叙事框架。
+
+## 原始结论
+{target}
+
+## 原始背景
+{context}
+
+只输出以下结构，不要评价对错，不要保留任何修辞性语言:
+
+## 核心断言
+（一句话，不含修辞）
+
+## 明示前提
+- 前提1
+- 前提2
+
+## 隐含前提
+- 隐含前提1（⚠️ 未经验证）
+- 隐含前提2（⚠️ 未经验证）
+（必须把论证依赖但未明说的前提全部列出，哪怕看起来显然）
+
+## 推理链
+1. 步骤1
+2. 步骤2（→ 结论）
+
+## 证据支撑
+- 断言 → 来源/证据（没有则写「无」）"""
+
+
+async def _extract_skeleton(
+    target: str,
+    context: str,
+    llm_client: Any,
+    on_status: Any = None,
+) -> str:
+    """Strip a claim to its logical skeleton using a role separate from the challenger.
+
+    The extraction is itself a model act, so it must (a) run in a different
+    role than the challenger (procedural separation) and (b) explicitly surface
+    implicit premises marked as unverified — never silently drop them.
+    """
+    if on_status:
+        on_status("Challenge: extracting logical skeleton…")
+    prompt = SKELETON_EXTRACT_PROMPT.format(target=target, context=context)
+    try:
+        return await asyncio.wait_for(
+            _call_llm(llm_client, prompt, 0.2, role="creative"),
+            timeout=CHALLENGE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        return f"（骨架提取超时，回退到原始文本）\n\nClaim: {target}\nContext: {context}"
+
+
+async def _ground_via_search(
+    target: str,
+    llm_client: Any,
+    on_status: Any = None,
+) -> str:
+    """Retrieve external sources for the claim, so the challenger grounds its
+    verdict in them instead of shared model memory."""
+    if on_status:
+        on_status("Challenge: retrieving grounding sources…")
+    try:
+        result = await web_search(target[:120], max_results=5)
+    except Exception as exc:
+        return f"（检索失败: {exc}）"
+    if not result:
+        return "（未检索到相关来源）"
+    return "\n".join(
+        f"- [{r.get('title', '')}]({r.get('url', '')}): {r.get('snippet', '')[:200]}"
+        for r in result
+    )
 
 
 async def _run_challenge_mode(
@@ -223,6 +344,8 @@ async def _run_challenge_mode(
     instruction: str,
     target: str,
     context: str,
+    skeleton_text: str | None,
+    grounding_sources: str | None,
     llm_client: Any,
     on_status: Any = None,
 ) -> tuple[str, dict[str, str]]:
@@ -234,10 +357,31 @@ async def _run_challenge_mode(
             "alternative_explanation": "Alternative explanations",
         }.get(current_mode, current_mode)
         on_status(f"Challenge: {label}…")
+
+    if skeleton_text is not None:
+        review_subject = f"""The claim below has been stripped to its logical skeleton. Original wording, rhetoric, tone, and confidence markers are removed — judge ONLY this structure.
+
+## Skeleton
+{skeleton_text}
+
+Premises marked ⚠️ 未经验证 (unverified) must be treated as suspicious, not as given. In particular, list any implicit premise that is false, unfalsifiable, or unsupported — a valid chain built on an unverified premise still fails."""
+    else:
+        review_subject = f"""Claim: {target}
+Context: {context}"""
+
+    if grounding_sources is not None:
+        grounding_directive = f"""Ground your judgment in the external sources below. For every assertion you evaluate, state which of the following applies: (a) supported by a retrieved source, (b) contradicted by one, or (c) not verifiable from them — assertions in case (c) are MODEL JUDGMENT ONLY and must be flagged as unconfirmed, never as verified.
+
+## External sources (retrieved for grounding)
+{grounding_sources}"""
+    else:
+        grounding_directive = ""
+
     prompt = f"""As a rigorous peer reviewer, {instruction}.
 
-Claim: {target}
-Context: {context}
+{review_subject}
+
+{grounding_directive}
 
 Be direct. If there are real issues, state them clearly. If the claim holds up, say so.
 

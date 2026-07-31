@@ -61,6 +61,47 @@ class ChallengeToolTests(unittest.TestCase):
         self.assertEqual(verdict["verdict"], "inconclusive")
         self.assertIn("timed out", verdict["detail"])
 
+    def test_challenge_with_skeleton_adds_extraction_call(self) -> None:
+        """skeleton=True strips the claim via a separate extraction call before
+        the challenger sees it, and marks the result as skeletonized."""
+        client = ConcurrentLlmClient()
+
+        result = asyncio.run(
+            do_challenge({"target": "Claim", "mode": "logic_flaw", "skeleton": True}, client)
+        )
+
+        # 1 skeleton extraction (role=creative) + 1 challenge (role=content_review)
+        self.assertEqual(client.calls, 2)
+        self.assertTrue(result["skeletonized"])
+        self.assertFalse(result["grounded"])
+
+    def test_challenge_with_grounding_retrieves_sources(self) -> None:
+        """grounding=True retrieves external sources before challenging and
+        marks the result as grounded."""
+        client = ConcurrentLlmClient()
+
+        with mock.patch(
+            "tools.web_search",
+            return_value=[{"title": "T", "url": "http://example.com", "snippet": "S"}],
+        ) as search:
+            result = asyncio.run(
+                do_challenge({"target": "Claim", "mode": "logic_flaw", "grounding": True}, client)
+            )
+
+        search.assert_called_once()
+        self.assertTrue(result["grounded"])
+        self.assertFalse(result["skeletonized"])
+
+    def test_challenge_defaults_to_no_decorrelation(self) -> None:
+        """Backwards compatibility: without skeleton/grounding, no extra calls."""
+        client = ConcurrentLlmClient()
+
+        result = asyncio.run(do_challenge({"target": "Claim", "mode": "logic_flaw"}, client))
+
+        self.assertEqual(client.calls, 1)
+        self.assertFalse(result["skeletonized"])
+        self.assertFalse(result["grounded"])
+
 
 class OutputLanguageTests(unittest.TestCase):
     """Verify sub-agent and final-report output language contracts."""

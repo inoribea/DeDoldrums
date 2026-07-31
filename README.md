@@ -33,7 +33,7 @@ Most research agents stop at "search → summarize → cite." DeDoldrums adds tw
 | **Enforced adversarial gate** | The pipeline physically blocks after synthesis until at least one finding passes a structured challenge — logic flaws, hidden assumptions, missing evidence, alternative explanations. No rubber-stamping. Findings that fail are flagged for revision and carried into peer review. |
 | **Role-based LLM routing** | Four research roles (`tool_calling`, `creative`, `conversational`, `content_review`) can each use a different model and provider. Your orchestrator runs on GPT-5.5 while divergent thinking uses Claude. The adversarial gate gets its own model — no self-review bias. |
 
-Under the hood: a 5.5-stage STORM pipeline, dynamic perspective discovery, fan-out parallel sub-agents, and L0-L4 layered memory that persists insights across sessions.
+Under the hood: a 4.5-stage STORM pipeline, dynamic perspective discovery, fan-out parallel sub-agents, and L0-L4 layered memory that persists insights across sessions.
 
 ---
 
@@ -44,11 +44,10 @@ Stage 0   — Dynamic Lens Discovery    (web search → generate topic-specific 
 Stage 1   — Multi-Perspective Scan    (fan-out parallel sub-agents, one per lens)
 Stage 2   — Contradiction Map         (conflicts, consensus, collective blind spots)
 Stage 3   — Synthesis                 (cross-lens connections → structured brief)
-Stage 3.5 — ⚔️ Adversarial Gate       (blocks until ≥1 challenge executed; flagged findings carry into peer review)
-Stage 4   — Peer Review               (confidence scores, bias check, missing angles)
+Stage 3.5 — ⚔️ Adversarial Gate       (blocks until ≥1 challenge executed; final quality gate)
 ```
 
-> Stage 3.5 is not a prompt asking the model to "check your work." It's a hard gate — the loop won't proceed until the `challenge` tool has been called with actual analysis, not a summary.
+> Stage 3.5 is not a prompt asking the model to "check your work." It's a hard gate — the loop won't proceed until the `challenge` tool has been called with actual analysis, not a summary. After the gate passes, the pipeline generates the final research brief directly.
 
 ---
 
@@ -129,7 +128,7 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 ```
 research_agent/
 ├── agent_loop.py       # async main loop (LLM → dispatch → stage advance)
-├── handler.py          # tool router + 5.5-stage state machine
+├── handler.py          # tool router + 4.5-stage state machine
 ├── tools.py            # explore / reflect / challenge / crystallize / sub_research
 ├── llm.py              # 5 backends × 7 providers, role-based LLMRouter
 ├── memory.py           # L0-L4 layered flat-file memory

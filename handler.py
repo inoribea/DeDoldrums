@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from typing import Any, Optional
 import uuid
 
@@ -15,7 +14,6 @@ try:
         STAGE2_CONTRADICTION_MAP,
         STAGE3_SYNTHESIS,
         STAGE35_ADVERSARIAL_GATE,
-        STAGE4_PEER_REVIEW,
     )
     from .tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
 except ImportError:  # pragma: no cover - direct script execution path.
@@ -26,7 +24,6 @@ except ImportError:  # pragma: no cover - direct script execution path.
         STAGE2_CONTRADICTION_MAP,
         STAGE3_SYNTHESIS,
         STAGE35_ADVERSARIAL_GATE,
-        STAGE4_PEER_REVIEW,
     )
     from tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
 
@@ -122,7 +119,17 @@ class ResearchHandler:
                 status = "inconclusive"
             else:
                 status = "challenged"
-            self.adversarial_results[target] = {"status": status, "data": result}
+            self.adversarial_results[target] = {
+                "status": status,
+                "data": result,
+                # Decorrelation provenance: whether this challenge ran on a
+                # logical skeleton (context-level decontamination) and whether
+                # it was grounded in retrieved sources (capability-level
+                # ceiling acknowledged). Not-grounded "challenged" verdicts are
+                # model judgment, not independent confirmation.
+                "skeletonized": bool(args.get("skeleton", False)),
+                "grounded": bool(args.get("grounding", False)),
+            }
         return StepOutcome(result)
 
     async def do_crystallize(self, args: dict[str, Any], response: Any) -> StepOutcome:
@@ -232,28 +239,16 @@ class ResearchHandler:
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
-            # The gate requires at least one real challenge. Findings that need revision
-            # remain attached to the session for peer review instead of blocking the
-            # pipeline forever: there is no separate tool that can transition them back.
+            # The gate requires at least one real challenge. Findings that need
+            # revision remain attached to the session context; the final report
+            # generator can review them from the conversation history without a
+            # separate peer-review stage.
             if len(self.adversarial_results) == 0:
                 return None  # agent hasn't called challenge yet — keep waiting
             self.stage = 4
             if self.on_status:
-                self.on_status("Stage 4: Peer review…")
+                self.on_status("Adversarial gate complete — generating final brief…")
             if self.on_stage:
-                self.on_stage(4, "同行评审")
-            unresolved = {
-                target: value
-                for target, value in self.adversarial_results.items()
-                if value.get("status") == "needs_revision"
-            }
-            if not unresolved:
-                return STAGE4_PEER_REVIEW
-            review_context = json.dumps(unresolved, ensure_ascii=False)[:4000]
-            return (
-                f"{STAGE4_PEER_REVIEW}\n\n"
-                "以下对抗验证发现仍待修订。必须在同行评审中逐项处理：\n"
-                f"{review_context}"
-            )
+                self.on_stage(4, "生成最终简报")
 
         return None
