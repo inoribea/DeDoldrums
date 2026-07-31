@@ -10,6 +10,7 @@ Role-to-model routing (configured via ``LLM_*`` env vars):
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Mapping, Sequence
 
@@ -49,6 +50,7 @@ FINAL_REPORT_RETRY_PROMPT = (
 )
 
 MAX_CONSECUTIVE_NO_TOOL_RESPONSES = 3
+MAX_API_RETRIES = 3
 FINAL_REPORT_ATTEMPTS = 3
 FINAL_SYNTHESIS_TIMEOUT_SECONDS = 240.0
 FINAL_REPORT_CONTEXT_MAX_CHARS = 24000
@@ -370,9 +372,24 @@ async def research_loop(
 
         _status("Requesting the next research action…")
         response = await llm_client.chat(messages=messages, tools=TOOLS_SCHEMA, role="tool_calling")
-
         if response.error:
-            raise RuntimeError(f"Research model request failed: {response.error}")
+            for retry in range(MAX_API_RETRIES):
+                delay = 2 ** retry
+                _status(
+                    f"API error ({response.error[:60]}), "
+                    f"retrying in {delay}s ({retry + 1}/{MAX_API_RETRIES})…"
+                )
+                await asyncio.sleep(delay)
+                response = await llm_client.chat(
+                    messages=messages, tools=TOOLS_SCHEMA, role="tool_calling"
+                )
+                if not response.error:
+                    break
+            else:
+                raise RuntimeError(
+                    f"Research model request failed after "
+                    f"{MAX_API_RETRIES + 1} attempts: {response.error}"
+                )
 
         if not response.tool_calls:
             consecutive_no_tool_responses += 1
