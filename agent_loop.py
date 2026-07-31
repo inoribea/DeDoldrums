@@ -5,7 +5,7 @@ Role-to-model routing (configured via ``LLM_*`` env vars):
     conversational  — user interaction: question refinement + final report
     tool_calling    — main loop: tool selection and pipeline orchestration
     creative        — divergent thinking: lens discovery + perspective reflection
-    content_review  — adversarial gate: challenge, confidence scoring
+    content_review  — adversarial gate: challenge execution
 """
 
 from __future__ import annotations
@@ -174,7 +174,7 @@ def _fallback_final_brief(compact_messages: Sequence[Mapping[str, Any]], reason:
     return (
         "# Research brief (recovered)\n\n"
         "The final report generator failed after multiple attempts, so this recovered "
-        "brief preserves the completed research and peer-review notes instead of "
+        "brief preserves the completed research notes instead of "
         "discarding the session.\n\n"
         f"Failure reason: {reason}\n\n"
         "## Available research notes\n\n"
@@ -365,21 +365,6 @@ async def research_loop(
             messages.append({"role": "user", "content": stage_prompt})
 
         if handler.stage >= 4:
-            _status("Conducting final peer review…")
-            peer_review = await llm_client.chat(
-                messages=messages,
-                tools=[],
-                role="tool_calling",
-                timeout=FINAL_SYNTHESIS_TIMEOUT_SECONDS,
-            )
-            if peer_review.error:
-                raise RuntimeError(f"Final peer review failed: {peer_review.error}")
-            if peer_review.tool_calls:
-                raise RuntimeError("Final peer review returned unexpected tool calls.")
-            peer_review_text = peer_review.content.strip()
-            if not peer_review_text:
-                raise RuntimeError("Final peer review was empty.")
-            messages.append({"role": "assistant", "content": peer_review_text})
             _status("Generating final research brief…")
             return await compose_final_brief()
 
