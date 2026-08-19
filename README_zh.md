@@ -62,6 +62,7 @@ Stage 3.5 — ⚔️ 对抗验证闸门  （阻断直至 ≥1 条挑战执行；
 | 🔍 **动态视角** | 从实时搜索结果中发现该主题特有的分析视角——不同于固定视角方案，每个视角为当前议题量身生成，并可作为一等公民工具身份在管线中使用。9 透镜静态库兜底。 |
 | 🧠 **L0-L4 记忆** | 分层扁平文件记忆：元规则 → 模式索引 → 领域知识 → 思维 SOP → 会话归档。无向量数据库。洞察跨会话结晶复用。 |
 | 🗺️ **矛盾映射** | 在得出结论之前，先找出各视角在哪里一致、哪里冲突、哪里共享盲点。 |
+| 🧍 **人工检查点** | 对抗闸门后、最终简报前可选暂停，展示矛盾地图、综合结果与审计缺口。可通过 `--no-human-gate` 关闭。 |
 | 🌐 **多平台接入** | 一个 aiohttp bridge 同时服务 HTTP+SSE → Web UI（Next.js 14）、Telegram bot、Discord bot、Vercel 代理。 |
 
 ---
@@ -119,17 +120,17 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # 对抗闸门，挑战执行
 | `reflect` | 应用思维透镜（动态或静态）分析已有发现 |
 | `challenge` | 4 模式对抗压力测试——逻辑、假设、证据、替代解释——并发执行 |
 | `crystallize` | 将突破性洞察固化到分层记忆，供跨会话复用 |
-| `sub_research` | 扇出并行子代理：按透镜预取搜索、并发单轮 LLM 分析 |
+| `sub_research` | 扇出并行子代理：按透镜预取搜索、并发单轮 LLM 分析；每个任务返回 ≤10 条（claim, source_url, confidence）三元组 |
+| `document_audit` | 闸门通过前按 5 项指标（来源可定位、反证、诚实盲点、标签正确、覆盖度）对文档进行审计 |
 
 ---
 
 ## 架构
 
 ```
-research_agent/
 ├── agent_loop.py       # 异步主循环（LLM → 调度 → 阶段推进）
 ├── handler.py          # 工具路由 + 4.5 阶段状态机
-├── tools.py            # explore / reflect / challenge / crystallize / sub_research
+├── tools.py            # explore / reflect / challenge / crystallize / sub_research / document_audit
 ├── llm.py              # 5 种后端 × 7 提供商，角色级 LLMRouter
 ├── memory.py           # L0-L4 分层扁平文件记忆
 ├── lenses.py           # 动态视角发现 + 9 透镜静态库

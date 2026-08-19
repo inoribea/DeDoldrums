@@ -62,6 +62,7 @@ Stage 3.5 — ⚔️ Adversarial Gate       (blocks until ≥1 challenge execute
 | 🔍 **Dynamic Perspectives** | Discovers topic-specific lenses from live search results — unlike fixed-perspective approaches, each lens is generated for the topic at hand and usable as a first-class tool identity in the pipeline. 9-lens static library as fallback. |
 | 🧠 **L0-L4 Memory** | Layered flat-file memory: meta-rules → pattern index → domain knowledge → thinking SOPs → session archives. No vector DB. Insights crystallize across sessions. |
 | 🗺️ **Contradiction Mapping** | Surfaces where perspectives agree, clash, or share blind spots — before conclusions are drawn. |
+| 🧍 **Human Checkpoint** | Optional pause after the adversarial gate, before the final brief, showing the contradiction map + synthesis + audit gaps. Disabled via `--no-human-gate`. |
 | 🌐 **Multi-Platform** | One aiohttp bridge serves HTTP+SSE → Web UI (Next.js 14), Telegram bot, Discord bot, Vercel proxy. |
 
 ---
@@ -119,17 +120,17 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 | `reflect` | Apply a thinking lens (dynamic or static) to analyze findings |
 | `challenge` | 4-mode adversarial pressure test — logic, assumptions, evidence, alternatives — runs concurrently |
 | `crystallize` | Persist breakthrough insights into layered memory for cross-session reuse |
-| `sub_research` | Fan-out parallel sub-agents: pre-fetch search per lens, concurrent single-turn LLM analysis |
+| `sub_research` | Fan-out parallel sub-agents: pre-fetch search per lens, concurrent single-turn LLM analysis; returns ≤10 (claim, source_url, confidence) triples per task |
+| `document_audit` | Document-level audit against a 5-point rubric (source locatability, counterevidence, honest blind spots, correct labels, coverage) before the gate passes |
 
 ---
 
 ## Architecture
 
 ```
-research_agent/
 ├── agent_loop.py       # async main loop (LLM → dispatch → stage advance)
 ├── handler.py          # tool router + 4.5-stage state machine
-├── tools.py            # explore / reflect / challenge / crystallize / sub_research
+├── tools.py            # explore / reflect / challenge / crystallize / sub_research / document_audit
 ├── llm.py              # 5 backends × 7 providers, role-based LLMRouter
 ├── memory.py           # L0-L4 layered flat-file memory
 ├── lenses.py           # dynamic lens discovery + 9-lens static library
