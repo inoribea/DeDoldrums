@@ -83,7 +83,22 @@ function CollapsibleSection({
 function auditState(
   audit: HumanCheckpoint["audit"],
 ): { passed: boolean; gaps: string[] } | null {
-  return "passed" in audit ? audit : null;
+  // The audit union is `{passed, gaps} | Record<string, never>` (empty object
+  // when the audit did not run). `"passed" in audit` alone does not narrow
+  // away an index-signature type, so guard the shape explicitly and rebuild
+  // the value instead of returning the union member.
+  if (
+    audit &&
+    typeof audit === "object" &&
+    "passed" in audit &&
+    typeof audit.passed === "boolean"
+  ) {
+    return {
+      passed: audit.passed,
+      gaps: Array.isArray(audit.gaps) ? audit.gaps : [],
+    };
+  }
+  return null;
 }
 
 export function CheckpointCard({ checkpoint, onResolve }: CheckpointCardProps) {
