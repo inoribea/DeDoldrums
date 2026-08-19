@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from agent_loop import (
     FINAL_REPORT_CONTEXT_MAX_CHARS,
@@ -225,11 +226,15 @@ class ResearchLoopTests(unittest.TestCase):
     def test_model_error_terminates_the_session(self) -> None:
         client = FakeLlmClient([
             ChatResponse(content="Refined question"),
-            ChatResponse(error="upstream timeout"),
+            ChatResponse(error="upstream timeout"),  # main-loop call
+            ChatResponse(error="upstream timeout"),  # retry 0
+            ChatResponse(error="upstream timeout"),  # retry 1
+            ChatResponse(error="upstream timeout"),  # retry 2
         ])
 
-        with self.assertRaisesRegex(RuntimeError, "Research model request failed"):
-            asyncio.run(research_loop(client, "Test question", handler=FakeHandler()))
+        with mock.patch("agent_loop.asyncio.sleep", new=mock.AsyncMock()):
+            with self.assertRaisesRegex(RuntimeError, "Research model request failed"):
+                asyncio.run(research_loop(client, "Test question", handler=FakeHandler()))
 
     def test_repeated_no_tool_responses_terminate_the_session(self) -> None:
         client = FakeLlmClient([
@@ -255,6 +260,26 @@ class ResearchLoopTests(unittest.TestCase):
         self.assertIn("challenge", prompt)
         self.assertIn("adversarial gate", prompt)
         self.assertIn("Plain-text", prompt)
+
+    def test_stage_35_no_tool_retry_prompt_names_audit_after_challenges(self) -> None:
+        """P8: once challenges exist, the retry prompt pushes document_audit."""
+        handler = StageThreePointFiveHandler()
+        handler.adversarial_results = {"finding_1": {"status": "challenged", "data": {}}}
+
+        prompt = _no_tool_retry_prompt(handler)
+
+        self.assertIn("document_audit", prompt)
+        self.assertIn("credential", prompt)
+
+    def test_stage_35_retry_prompt_names_downgrade_when_audit_failed(self) -> None:
+        """P8: failing audit with no downgrade → prompt offers the escape hatch."""
+        handler = StageThreePointFiveHandler()
+        handler.adversarial_results = {"finding_1": {"status": "challenged", "data": {}}}
+        handler.audit_result = {"passed": False, "gaps": ["coverage_complete: x"]}
+
+        prompt = _no_tool_retry_prompt(handler)
+
+        self.assertIn("downgrade_note", prompt)
 
     def test_no_tool_retry_uses_stage_aware_prompt_in_loop(self) -> None:
         client = FakeLlmClient([

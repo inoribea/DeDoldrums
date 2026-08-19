@@ -56,6 +56,18 @@ FINAL_SYNTHESIS_TIMEOUT_SECONDS = 240.0
 FINAL_REPORT_CONTEXT_MAX_CHARS = 24000
 FINAL_REPORT_TRUNCATION_NOTICE = "\n\n[... truncated to keep final report input within budget ...]"
 
+# P6: which stage artifact to snapshot when a stage COMPLETES. Keyed by the
+# completed stage: the contradiction map is written while stage==2, so the
+# 2→3 transition snapshots "contradiction_map"; synthesis is written during
+# stage 3, so the 3→3.5 transition snapshots "synthesis"; etc.
+STAGE_ARTIFACT_BY_COMPLETED_STAGE = {
+    1: "stage1_scan",
+    2: "contradiction_map",
+    3: "synthesis",
+    3.5: "gate",
+}
+STAGE_ARTIFACT_SNAPSHOT_MAX_CHARS = 12000
+
 
 def _message_content_text(message: Mapping[str, Any]) -> str:
     content = message.get("content")
@@ -170,7 +182,19 @@ def _fallback_final_brief(compact_messages: Sequence[Mapping[str, Any]], reason:
         if note:
             notes.append(note)
     if not notes:
-        raise RuntimeError(f"Final research brief failed: {reason}")
+        # Nothing was produced before the failure (e.g. the gate passed but the
+        # session carried no recoverable assistant prose). Never crash the
+        # caller — return an explicit empty-recovery notice instead of a
+        # misleading "brief".
+        return (
+            "# Research brief (recovered)\n\n"
+            "The final report generator failed before any research notes were "
+            "produced.\n\n"
+            f"Failure reason: {reason}\n\n"
+            "## Known limitation\n\n"
+            "No completed pipeline outputs were available to recover — this is "
+            "an empty recovery notice, not a research brief."
+        )
 
     excerpts = "\n\n".join(f"- {note}" for note in notes[-6:])
     return (
@@ -215,6 +239,51 @@ def _lens_label(lens: Any) -> str:
     return str(lens) if lens is not None else ""
 
 
+def _snapshot_recent_stage_output(messages: Sequence[Mapping[str, Any]]) -> str:
+    """Collect the most recent assistant prose — the just-completed stage's output."""
+    parts: list[str] = []
+    for message in reversed(messages):
+        if message.get("role") != "assistant":
+            continue
+        content = _message_content_text(message)
+        if not content:
+            continue
+        parts.append(content)
+        if len(parts) >= 4:
+            break
+    text = "\n\n".join(reversed(parts)).strip()
+    return text[:STAGE_ARTIFACT_SNAPSHOT_MAX_CHARS]
+
+
+async def _persist_stage_artifact(
+    handler: Any,
+    messages: Sequence[Mapping[str, Any]],
+    completed_stage: int | float,
+) -> None:
+    """Snapshot the just-completed stage's output into handler.stage_artifacts
+    and persist it to disk BEFORE any context truncation (P6)."""
+    artifact_name = STAGE_ARTIFACT_BY_COMPLETED_STAGE.get(completed_stage)
+    if artifact_name is None:
+        return
+    content = _snapshot_recent_stage_output(messages)
+    if not content:
+        return
+    handler.stage_artifacts[artifact_name] = content
+    memory = getattr(handler, "memory", None)
+    if memory is not None:
+        try:
+            await asyncio.to_thread(
+                memory.save_stage_artifact,
+                handler.question,
+                artifact_name,
+                content,
+            )
+        except Exception:
+            pass  # best-effort persistence; the in-memory artifact still exists
+    if getattr(handler, "on_status", None):
+        handler.on_status(f"Stage artifact saved: {artifact_name}")
+
+
 def _no_tool_retry_prompt(handler: Any) -> str:
     stage = getattr(handler, "stage", None)
     if stage in (0, 1):
@@ -242,6 +311,22 @@ def _no_tool_retry_prompt(handler: Any) -> str:
             "as passing the gate."
         )
 
+    if stage == 3.5 and getattr(handler, "adversarial_results", {}) and getattr(handler, "audit_result", None) is None:
+        return (
+            "Stage 3.5 gate needs a gate credential: call the document_audit "
+            "tool to run the five-point rubric (source locatability, "
+            "counterevidence, honest blind spots, label correctness, coverage). "
+            "No audit pass or explicit downgrade → no final brief."
+        )
+
+    if stage == 3.5 and getattr(handler, "audit_result", None) is not None and not handler.audit_result.get("passed"):
+        if getattr(handler, "gate_credential", None) is None:
+            return (
+                "Document audit FAILED. Either fix the reported gaps and "
+                "re-run document_audit, or record an explicit downgrade by "
+                "calling document_audit with downgrade_note=<specific reason>."
+            )
+
     if stage in (2, 3):
         return (
             "Your analysis was recorded. To keep the pipeline moving, use a tool "
@@ -260,6 +345,8 @@ async def research_loop(
     on_stage: Any = None,
     handler: Any = None,
     report_language: str | None = None,
+    human_gate: bool = True,
+    on_checkpoint: Any = None,
 ) -> str:
     """Run the full -1 → 4 research pipeline and return its final brief.
 
@@ -269,6 +356,15 @@ async def research_loop(
     If *on_status* is provided, it is called as ``on_status(message)``
     at each significant step. If *on_stage* is provided, it is called
     as ``on_stage(stage, description)`` on stage transitions.
+
+    P4 human checkpoint: when *human_gate* is True (default) and
+    *on_checkpoint* is provided, the pipeline pauses after the adversarial
+    gate passes (audit credential obtained) and before the final brief,
+    awaiting the operator's decision. ``on_checkpoint(handler)`` must be a
+    coroutine returning ``"continue"`` | ``"exit"`` | ``"feedback"``; for
+    ``"feedback"`` it is responsible for recording the note (e.g. appending
+    to ``handler.open_questions``). With ``human_gate=False`` the behavior is
+    identical to the pre-retrofit flow.
     """
     def _status(msg: str) -> None:
         if on_status:
@@ -316,6 +412,23 @@ async def research_loop(
     ]
 
     async def compose_final_brief() -> str:
+        # P6: persist stage artifacts BEFORE any context truncation, so a
+        # crash/interrupt can recover the full contradiction map & synthesis.
+        stage_artifacts = getattr(handler, "stage_artifacts", {}) or {}
+        for name, content in list(stage_artifacts.items()):
+            memory = getattr(handler, "memory", None)
+            if memory is None:
+                break
+            try:
+                await asyncio.to_thread(
+                    memory.save_stage_artifact,
+                    getattr(handler, "question", ""),
+                    name,
+                    content,
+                )
+            except Exception:
+                pass
+
         compact = _compact_final_report_messages(messages)
 
         total_chars = sum(_message_size(m) for m in compact)
@@ -326,6 +439,15 @@ async def research_loop(
 
         output_directive = _output_directive(report_language)
         final_report_prompt = FINAL_REPORT_PROMPT_TEMPLATE.format(output_directive=output_directive)
+        # P8/P4: surface gate downgrade records and operator feedback into the
+        # final brief — the generator must acknowledge them, not ignore them.
+        pending_notes = list(getattr(handler, "open_questions", []) or [])
+        if pending_notes:
+            notes_block = "\n".join(f"- {note}" for note in pending_notes[-6:])
+            final_report_prompt += (
+                "\n\n研究过程中的待决问题 / 降级记录 / 操作者反馈（必须在简报中显式回应）:\n"
+                f"{notes_block}"
+            )
         retry_messages = compact + [{"role": "user", "content": final_report_prompt}]
         last_failure = "empty response"
         for attempt in range(FINAL_REPORT_ATTEMPTS):
@@ -362,11 +484,23 @@ async def research_loop(
     consecutive_no_tool_responses = 0
 
     for turn in range(1, max_turns + 1):
+        completed_stage = handler.stage
         stage_prompt = await handler.get_stage_prompt()
+        if completed_stage in STAGE_ARTIFACT_BY_COMPLETED_STAGE and handler.stage != completed_stage:
+            await _persist_stage_artifact(handler, messages, completed_stage)
         if stage_prompt:
             messages.append({"role": "user", "content": stage_prompt})
 
         if handler.stage >= 4:
+            # P4 human checkpoint: gate passed (audit credential obtained),
+            # brief not yet composed — optional pause for the operator.
+            if human_gate and on_checkpoint is not None:
+                decision = await on_checkpoint(handler)
+                if decision == "exit":
+                    _status("Human checkpoint: operator aborted research.")
+                    return "研究被操作者中止。"
+                if decision != "continue":
+                    _status("Human checkpoint: operator provided feedback — incorporating…")
             _status("Generating final research brief…")
             return await compose_final_brief()
 

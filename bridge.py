@@ -73,6 +73,11 @@ class ResearchSession:
     loop: asyncio.AbstractEventLoop | None = None
     cancelled: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # P4: human-checkpoint coordination (research worker thread ↔ HTTP handler)
+    checkpoint_pending: bool = False
+    checkpoint_id: str = ""
+    _checkpoint_resolved: threading.Event = field(default_factory=threading.Event)
+    _checkpoint_decision: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.handler = ResearchHandler(self.question, self.memory, _new_llm_client())
@@ -86,6 +91,16 @@ class ResearchSession:
         logging.getLogger("bridge").debug("add_event %s (total: %d)", event_type, len(self.messages))
         if queue is not None and loop is not None and not loop.is_closed():
             asyncio.run_coroutine_threadsafe(queue.put(message), loop)
+
+    def resolve_checkpoint(self, action: str, note: str = "") -> bool:
+        """Resolve a pending human checkpoint. Returns False when none is pending."""
+        with self.lock:
+            if not self.checkpoint_pending:
+                return False
+            self._checkpoint_decision = {"action": action, "note": note}
+            self._checkpoint_resolved.set()
+            self.checkpoint_pending = False
+        return True
 
 
 class ResearchBridge:
@@ -141,6 +156,39 @@ class ResearchBridge:
             session.add_event("status", {"message": msg})
         def on_stage(stage: int | float, desc: str) -> None:
             session.add_event("stage_change", {"stage": stage, "description": desc})
+
+        async def on_checkpoint(handler: Any) -> str:
+            """P4: pause research after the gate, wait for the operator."""
+            payload = {
+                "checkpointId": uuid.uuid4().hex[:8],
+                "question": session.question,
+                "contradictionMap": handler.stage_artifacts.get("contradiction_map", ""),
+                "synthesis": handler.stage_artifacts.get("synthesis", ""),
+                "audit": handler.audit_result or {},
+                "openQuestions": handler.open_questions,
+            }
+            with session.lock:
+                session.checkpoint_pending = True
+                session.checkpoint_id = payload["checkpointId"]
+                session._checkpoint_resolved.clear()
+            session.add_event("human_checkpoint", payload)
+            logger.info("Human checkpoint waiting sid=%s", session.sid)
+            while not session._checkpoint_resolved.wait(timeout=0.5):
+                if session.cancelled.is_set():
+                    return "exit"
+            with session.lock:
+                decision = dict(session._checkpoint_decision)
+                session.checkpoint_pending = False
+            action = decision.get("action", "continue")
+            if action == "exit":
+                session.add_event("error", {"message": "research aborted at human checkpoint"})
+                return "exit"
+            note = str(decision.get("note", "")).strip()
+            if action == "feedback" and note:
+                handler.open_questions.append(f"[操作者反馈] {note}")
+            session.add_event("status", {"message": "Human checkpoint confirmed — generating final brief…"})
+            return "continue"
+
         thread_name = threading.current_thread().name
         try:
             session.add_event("stage_change", {"stage": 0, "description": self._stage_name(0)})
@@ -151,7 +199,7 @@ class ResearchBridge:
             session.handler.on_stage = on_stage
             logger.info("Starting research sid=%s thread=%s question=%s", session.sid, thread_name, session.question[:80])
             session.started_at = time.time()
-            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler, report_language=session.report_language))
+            brief = asyncio.run(research_loop(_new_llm_client(), session.question, max_turns=100, on_status=on_status, on_stage=on_stage, handler=session.handler, report_language=session.report_language, human_gate=True, on_checkpoint=on_checkpoint))
             if not isinstance(brief, str) or not brief.strip():
                 raise RuntimeError("Research completed without a final brief.")
             logger.info(
@@ -242,6 +290,20 @@ class ResearchBridge:
         session.add_event("error", {"message": "research cancelled"})
         return web.json_response({"status": "cancelled", "sessionId": session.sid})
 
+    async def handle_session_checkpoint(self, request: web.Request) -> web.Response:
+        """P4: resolve a pending human checkpoint (continue / exit / feedback)."""
+        session = self.sessions.get(request.match_info["sid"])
+        if session is None:
+            return web.json_response({"error": "session not found"}, status=404)
+        body = await self._json_body(request)
+        action = str((body or {}).get("action", "")).strip()
+        if action not in ("continue", "exit", "feedback"):
+            return web.json_response({"error": "invalid action"}, status=400)
+        note = str((body or {}).get("note", ""))
+        if not session.resolve_checkpoint(action, note):
+            return web.json_response({"error": "no checkpoint pending"}, status=409)
+        return web.json_response({"status": "resolved"})
+
     async def handle_list_sessions(self, request: web.Request) -> web.Response:
         return web.json_response({"sessions": [
             {"sessionId": item.sid, "question": item.question, "done": item.done}
@@ -288,6 +350,7 @@ def _build_frontend_routes(bridge: ResearchBridge) -> list[web.RouteDef]:
     routes.append(web.route("GET", "/api/research/stream", bridge.handle_session_stream))
     routes.append(web.route("GET", "/api/session/{sid}/history", bridge.handle_session_history))
     routes.append(web.route("POST", "/api/session/{sid}/cancel", bridge.handle_session_cancel))
+    routes.append(web.route("POST", "/api/session/{sid}/checkpoint", bridge.handle_session_checkpoint))
     routes.append(web.route("GET", "/api/sessions", bridge.handle_list_sessions))
 
     return routes
@@ -321,6 +384,7 @@ def create_app() -> web.Application:
     app.router.add_get("/session/{sid}/stream", bridge.handle_session_stream)
     app.router.add_get("/session/{sid}/history", bridge.handle_session_history)
     app.router.add_post("/session/{sid}/cancel", bridge.handle_session_cancel)
+    app.router.add_post("/session/{sid}/checkpoint", bridge.handle_session_checkpoint)
     app.router.add_get("/sessions", bridge.handle_list_sessions)
 
     # Built-in web frontend + /api aliases.

@@ -24,13 +24,57 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal", action="store_true", help="Continue researching until the budget ends")
     parser.add_argument("--budget", type=int, default=30, metavar="MINUTES", help="Goal-mode budget (default: 30)")
     parser.add_argument("--max-turns", type=int, default=100, help="Maximum LLM turns (default: 100)")
+    parser.add_argument(
+        "--no-human-gate",
+        action="store_true",
+        help="Disable the human checkpoint after the adversarial gate (P4)",
+    )
     args = parser.parse_args()
     if args.budget <= 0 or args.max_turns <= 0:
         parser.error("--budget and --max-turns must be positive")
     return args
 
 
-async def _run_goal_mode(client: Any, question: str, budget: int, max_turns: int) -> str:
+async def _console_checkpoint(handler: Any) -> str:
+    """P4 human checkpoint for the CLI: show artifacts, wait for a decision."""
+    print("\n" + "=" * 64)
+    print("【人工检查点】对抗验证已通过，生成最终简报前请确认（P4）")
+    print("=" * 64)
+    print("\n— 矛盾地图 —")
+    print(handler.stage_artifacts.get("contradiction_map", "（无）")[:800])
+    print("\n— 合成摘要 —")
+    print(handler.stage_artifacts.get("synthesis", "（无）")[:800])
+    audit = handler.audit_result or {}
+    print(f"\n— 文档审计: {'PASS' if audit.get('passed') else 'FAIL'} —")
+    for gap in audit.get("gaps", []):
+        print(f"  缺口: {gap}")
+    while True:
+        choice = await asyncio.to_thread(
+            input,
+            "\n继续生成简报 (c) / 反馈并继续 (f) / 中止 (x): ",
+        )
+        choice = choice.strip().lower()
+        if choice in ("c", ""):
+            return "continue"
+        if choice == "x":
+            return "exit"
+        if choice == "f":
+            note = await asyncio.to_thread(input, "反馈内容（将注入最终简报）: ")
+            note = note.strip()
+            if note:
+                handler.open_questions.append(f"[操作者反馈] {note}")
+            return "feedback"
+        print("无效输入，请输入 c / f / x")
+
+
+async def _run_goal_mode(
+    client: Any,
+    question: str,
+    budget: int,
+    max_turns: int,
+    human_gate: bool = True,
+    on_checkpoint: Any = None,
+) -> str:
     goal = ResearchGoalMode(question, budget_minutes=budget, max_turns=max_turns)
     brief = ""
     briefs: list[str] = []
@@ -47,7 +91,13 @@ async def _run_goal_mode(client: Any, question: str, budget: int, max_turns: int
             prior_context = f"\n\n[先前研究发现]\n{prior[:2000]}"
 
         enriched = f"{question}{prior_context}\n\n{continuation}"
-        brief = await research_loop(client, enriched, max_turns=max_turns)
+        brief = await research_loop(
+            client,
+            enriched,
+            max_turns=max_turns,
+            human_gate=human_gate,
+            on_checkpoint=on_checkpoint,
+        )
 
         # Archive so memory.search() picks it up in the next iteration
         if brief:
@@ -64,10 +114,24 @@ async def main() -> None:
     args = parse_args()
     router_config = get_router_config()
     client = LLMRouter(router_config)
+    human_gate = not args.no_human_gate
     if args.goal:
-        brief = await _run_goal_mode(client, args.question, args.budget, args.max_turns)
+        brief = await _run_goal_mode(
+            client,
+            args.question,
+            args.budget,
+            args.max_turns,
+            human_gate=human_gate,
+            on_checkpoint=_console_checkpoint if human_gate else None,
+        )
     else:
-        brief = await research_loop(client, args.question, args.max_turns)
+        brief = await research_loop(
+            client,
+            args.question,
+            args.max_turns,
+            human_gate=human_gate,
+            on_checkpoint=_console_checkpoint if human_gate else None,
+        )
 
     print(brief)
     memory = MemoryStore("memory/")

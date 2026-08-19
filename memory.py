@@ -157,6 +157,47 @@ class MemoryStore:
             with open(path, "w", encoding="utf-8") as file:
                 json.dump(findings, file, ensure_ascii=False, indent=2)
 
+    def _session_dir(self, question: str) -> str:
+        """Return the L4 archive directory used by this session's artifacts."""
+        return os.path.join(
+            self.base,
+            "L4_archive",
+            f"{datetime.now().strftime('%Y-%m-%d')}_{self._safe_filename(question[:50])}",
+        )
+
+    def save_stage_artifact(self, question: str, stage_name: str, content: str) -> str:
+        """Persist a stage artifact (contradiction map, synthesis, …) to disk.
+
+        P6: artifacts must be on disk BEFORE any context truncation, so a
+        crash/interrupt can recover the full stage outputs without re-running
+        completed stages. Returns the written path.
+        """
+        stage_dir = os.path.join(self._session_dir(question), "stages")
+        os.makedirs(stage_dir, exist_ok=True)
+        path = os.path.join(stage_dir, f"{self._safe_filename(stage_name)}.md")
+        with self._lock_for(path):
+            with open(path, "w", encoding="utf-8") as file:
+                file.write(content)
+        return path
+
+    def load_stage_artifacts(self, question: str) -> dict[str, str]:
+        """Recover persisted stage artifacts for a session (crash recovery)."""
+        stage_dir = os.path.join(self._session_dir(question), "stages")
+        artifacts: dict[str, str] = {}
+        if not os.path.isdir(stage_dir):
+            return artifacts
+        for filename in sorted(os.listdir(stage_dir)):
+            if not filename.endswith(".md"):
+                continue
+            path = os.path.join(stage_dir, filename)
+            try:
+                with self._lock_for(path):
+                    with open(path, "r", encoding="utf-8") as file:
+                        artifacts[filename[:-3]] = file.read()
+            except OSError:
+                continue
+        return artifacts
+
     # ── Cross-layer search ──
     def search(
         self,
