@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -23,7 +25,182 @@ except ImportError:  # Supports direct execution from the package directory.
 
 CHALLENGE_TIMEOUT_SECONDS = 45.0
 SUB_RESEARCH_TIMEOUT_SECONDS = 60.0
-MAX_SUB_RESULT_CHARS = 3000
+
+# ── Finding schema (P5): every claim-carrying finding must be locatable ──
+CONFIDENCE_KNOWN = "已知"
+CONFIDENCE_INFERRED = "推断"
+CONFIDENCE_GUESS = "猜测"
+CONFIDENCE_LEVELS = (CONFIDENCE_KNOWN, CONFIDENCE_INFERRED, CONFIDENCE_GUESS)
+MAX_SUB_RESULTS_PER_TASK = 10
+
+
+def validate_finding(finding: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Enforce the structured finding contract ``{claim, source_url, confidence, lens}``.
+
+    Returns ``(normalized_finding, warnings)``. Missing ``source_url`` or an
+    invalid ``confidence`` downgrades the finding to ``猜测`` (guess) with a
+    warning — a claim without a locatable source must never present itself as
+    verified. This makes grounding a ledger check, not a retrofit.
+    """
+    warnings: list[str] = []
+    normalized = dict(finding)
+    claim = str(finding.get("claim", "")).strip()
+    source_url = str(finding.get("source_url", "")).strip()
+    confidence = str(finding.get("confidence", "")).strip()
+    lens = str(finding.get("lens", "")).strip()
+
+    if not claim:
+        warnings.append("finding is missing a claim")
+    if not source_url:
+        confidence = CONFIDENCE_GUESS
+        warnings.append("finding is missing source_url — confidence downgraded to 猜测")
+    if confidence not in CONFIDENCE_LEVELS:
+        warnings.append(f"invalid confidence {confidence!r} — downgraded to 猜测")
+        confidence = CONFIDENCE_GUESS
+
+    normalized["claim"] = claim
+    normalized["source_url"] = source_url
+    normalized["confidence"] = confidence
+    if lens:
+        normalized["lens"] = lens
+    return normalized, warnings
+
+
+# ── P2: document-level audit rubric (5 items, externally checkable) ──
+AUDIT_LLM_PROMPT = """你是文档级审计员。对以下研究产物执行两条 rubric 检查（每条给出 PASS 或 FAIL 与一句具体理由）。
+
+## 矛盾地图
+{contradiction_map}
+
+## 综合合成
+{synthesis}
+
+检查1 (COUNTEREVIDENCE): 反例是否被考虑？综合里是否有具体的反证、反驳或替代解释，而不是只有单方面支持？
+
+检查2 (BLIND_SPOTS): 盲点声明是否诚实？是否列出「搜过什么/没试什么」的具体缺口，而不是空话（如「需要更多研究」）？
+
+输出格式（必须严格按行，不要输出其他内容）:
+COUNTEREVIDENCE: PASS|FAIL|INCONCLUSIVE — 具体理由
+BLIND_SPOTS: PASS|FAIL|INCONCLUSIVE — 具体理由"""
+
+
+def _parse_audit_verdicts(text: str) -> dict[str, dict[str, Any]]:
+    """Parse the audit LLM's structured verdict lines into rubric results."""
+    verdicts: dict[str, dict[str, Any]] = {}
+    for line in text.splitlines():
+        for key in ("COUNTEREVIDENCE", "BLIND_SPOTS"):
+            stripped = line.strip()
+            if not stripped.startswith(key + ":"):
+                continue
+            rest = stripped[len(key) + 1:].strip()
+            head = rest.split("—")[0].split(" - ")[0].split(":")[0].strip().upper()
+            passed = head == "PASS"
+            verdicts[key.lower()] = {"passed": passed, "detail": rest}
+    return verdicts
+
+
+async def audit_document(
+    findings: list[dict[str, Any]],
+    lenses_used: set[str],
+    dynamic_lenses: list[dict[str, Any]],
+    stage_artifacts: dict[str, str],
+    llm_client: Any,
+    on_status: Any = None,
+) -> dict[str, Any]:
+    """Run the five-item document audit (P2) over the research as a whole.
+
+    Deterministic rubric items (source locatability, label correctness,
+    coverage) are computed from the findings ledger — no model self-report.
+    The two judgment items (counterevidence, honest blind spots) are checked
+    against the synthesis/contradiction-map artifacts by the content-review
+    role, never by the orchestrator that produced them.
+    """
+    claim_findings = [f for f in findings if isinstance(f, dict) and f.get("claim")]
+    results: dict[str, dict[str, Any]] = {}
+
+    # Rubric 1 — every key claim has a locatable source.
+    missing_source = [f for f in claim_findings if not str(f.get("source_url", "")).strip()]
+    results["source_locatable"] = {
+        "passed": not missing_source,
+        "detail": f"{len(claim_findings)} 条 claim findings，{len(missing_source)} 条缺 source_url",
+    }
+
+    # Rubric 4 — labels are correct: [已知] all have sources; sourceless are 猜测.
+    known_without_source = [
+        f for f in claim_findings
+        if f.get("confidence") == CONFIDENCE_KNOWN and not str(f.get("source_url", "")).strip()
+    ]
+    sourceless_not_guess = [
+        f for f in claim_findings
+        if f.get("confidence") != CONFIDENCE_GUESS and not str(f.get("source_url", "")).strip()
+    ]
+    results["labels_correct"] = {
+        "passed": not known_without_source and not sourceless_not_guess,
+        "detail": (
+            f"{len(known_without_source)} 条「已知」缺来源，"
+            f"{len(sourceless_not_guess)} 条无来源未标猜测"
+        ),
+    }
+
+    # Rubric 5 — coverage: every discovered lens produced output.
+    lens_keys: set[str] = set()
+    for lens in dynamic_lenses:
+        key = str(lens.get("key") or lens.get("name") or "").strip()
+        if key:
+            lens_keys.add(key)
+    lens_keys.update(str(x).strip() for x in lenses_used)
+    lens_keys.discard("")
+    covered = {str(f.get("lens", "")).strip() for f in claim_findings}
+    uncovered = sorted(lens_keys - covered)
+    results["coverage_complete"] = {
+        "passed": not uncovered,
+        "detail": f"{len(lens_keys)} 个 lens，{len(uncovered)} 个无产出: {', '.join(uncovered) or '无'}",
+    }
+
+    # Rubrics 2 & 3 — LLM-judged against the synthesis artifact.
+    synthesis = str(stage_artifacts.get("synthesis", ""))
+    contradiction_map = str(stage_artifacts.get("contradiction_map", ""))
+    prompt = AUDIT_LLM_PROMPT.format(
+        contradiction_map=contradiction_map or "（无矛盾地图产物）",
+        synthesis=synthesis or "（无合成产物）",
+    )
+    if on_status:
+        on_status("Document audit: checking counterevidence & blind-spot honesty…")
+    text = ""
+    try:
+        text = await _call_llm(llm_client, prompt, 0.2, role="content_review")
+    except Exception as exc:  # audit must degrade to a failing item, never crash the gate
+        results["counterevidence"] = {"passed": False, "detail": f"审计调用失败: {type(exc).__name__}"}
+        results["honest_blind_spots"] = {"passed": False, "detail": f"审计调用失败: {type(exc).__name__}"}
+    else:
+        verdicts = _parse_audit_verdicts(text)
+        results["counterevidence"] = verdicts.get(
+            "counterevidence",
+            {"passed": False, "detail": "审计输出无法解析"},
+        )
+        results["honest_blind_spots"] = verdicts.get(
+            "blind_spots",
+            {"passed": False, "detail": "审计输出无法解析"},
+        )
+        # Deterministic supplement: a synthesis without a Blind Spots section
+        # can never be an honest blind-spot declaration, regardless of what
+        # the LLM verdict says. Heading-aware: a prose mention of the words
+        # does not count — the section itself must exist.
+        has_blind_spots_heading = any(
+            re.match(r"^\s*(#{1,6}|\*\*)\s*blind\s*spots", line, re.IGNORECASE)
+            for line in str(synthesis).splitlines()
+        )
+        if not has_blind_spots_heading:
+            results["honest_blind_spots"]["passed"] = False
+            existing = results["honest_blind_spots"].get("detail", "")
+            results["honest_blind_spots"]["detail"] = (existing + "；合成产物缺少 Blind Spots 节").strip("；")
+
+    gaps = [f"{key}: {item.get('detail', '')}" for key, item in results.items() if not item.get("passed")][:5]
+    return {
+        "passed": not gaps,
+        "gaps": gaps,
+        "rubric": results,
+    }
 
 
 TOOLS_SCHEMA = [
@@ -138,6 +315,22 @@ TOOLS_SCHEMA = [
                     },
                 },
                 "required": ["tasks"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "document_audit",
+            "description": "文档级审计：对研究整体执行五条 rubric（来源可定位/反例考虑/盲点诚实/标签正确/覆盖完整），输出 pass/fail 与缺口清单（≤5 条）。在对抗闸门后、生成最终简报前调用；audit 未通过时传 downgrade_note 记录显式降级理由。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "downgrade_note": {
+                        "type": "string",
+                        "description": "audit 未通过时，显式降级记录：说明哪个 rubric 没过、影响哪条结论。传了即视为接受缺口出简报。",
+                    },
+                },
             },
         },
     },
@@ -448,12 +641,21 @@ SUB_RESEARCH_PROMPT = """你是一个独立的研究子代理，从「{lens_name
 ## 预检索结果
 {pre_fetched}
 
-要求：基于以上预检索结果和你的视角身份，产出结构化的分析。包含：
-1. 关键发现（2-5 条，每条附带来源 URL）
-2. 这个视角揭示了什么其他人会忽略的张力或洞察？
-3. 需要进一步深挖的问题（1-3 个）
+要求：基于以上预检索结果和你的视角身份，产出一条结构化 JSON（P1 压缩契约）:
 
-{output_directive}控制在 500 字以内。"""
+```json
+{{"results": [{{"claim": "一句话、可验证的判断", "source_url": "可定位的 URL", "confidence": "已知|推断|猜测", "lens": "{lens_name}"}}]}}
+```
+
+约束（强制）:
+- 只回传上述 JSON 三元组列表；最多 {max_results} 条
+- 原始搜索过程、失败查询、长篇引用一律不回传——主上下文只接收三元组
+- claim 必须可独立验证；source_url 只填真实来源 URL，没有就留空字符串
+- confidence: 多个独立来源确认=已知；有来源但未交叉验证=推断；无来源或纯推断=猜测
+- 若无法从预检索结果形成任何有来源的判断，诚实回传空列表 []
+- 不要输出 JSON 以外的任何解释文字
+
+{output_directive}"""
 
 
 def _output_directive(language: str | None) -> str:
@@ -461,6 +663,66 @@ def _output_directive(language: str | None) -> str:
     if language == "en":
         return "Respond in English. "
     return "使用中文。 "
+
+
+def _extract_sub_results(raw: str, lens: str, lens_name: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Parse a sub-agent's JSON triple contract, returning (results, error).
+
+    Accepts bare JSON or a fenced code block. Anything that is not the
+    ``{"results": [...]}`` contract yields ``([], error)`` — the main context
+    never receives raw sub-agent prose (P1 compression contract).
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        newline = text.find("\n")
+        if newline != -1:
+            text = text[newline:].strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+
+    payload: Any = None
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        # Fallback: extract inline JSON objects (e.g. model wrapped in prose).
+        try:
+            objects = []
+            for match in re.findall(r"\{[^{}]*\}", text):
+                try:
+                    obj = json.loads(match)
+                    if isinstance(obj, dict):
+                        objects.append(obj)
+                except json.JSONDecodeError:
+                    continue
+            if objects:
+                payload = {"results": objects}
+        except Exception:
+            payload = None
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+        return [], "sub-agent 输出不是合法的 JSON 三元组契约"
+
+    results: list[dict[str, Any]] = []
+    raw_results = payload["results"]
+    for item in raw_results[:MAX_SUB_RESULTS_PER_TASK]:
+        if not isinstance(item, dict):
+            continue
+        triple = {
+            "claim": str(item.get("claim", "")).strip(),
+            "source_url": str(item.get("source_url", "")).strip(),
+            "confidence": str(item.get("confidence", "")).strip(),
+            "lens": str(item.get("lens", "")).strip() or lens,
+        }
+        if triple["claim"]:
+            results.append(triple)
+    if len(raw_results) > MAX_SUB_RESULTS_PER_TASK:
+        results.append({
+            "claim": f"（子代理回传 {len(raw_results)} 条，超过上限，截断保留前 {MAX_SUB_RESULTS_PER_TASK} 条）",
+            "source_url": "",
+            "confidence": CONFIDENCE_GUESS,
+            "lens": lens,
+        })
+    return results[:MAX_SUB_RESULTS_PER_TASK], None
 
 
 async def do_sub_research(
@@ -479,6 +741,9 @@ async def do_sub_research(
 
     All sub-agents run concurrently via ``asyncio.gather`` inside a single
     tool invocation — matching the ``do_challenge`` fan-out pattern.
+
+    P1 compression contract: the main context receives ONLY the distilled
+    (claim, source_url, confidence) triples, never the sub-agents' raw output.
     """
     if not tasks:
         return {"task_results": [], "error": "tasks is required"}
@@ -533,6 +798,7 @@ async def do_sub_research(
             concerns=lens_config["concerns"],
             blind_spot=lens_config["blind_spot"],
             pre_fetched=snippets or "（无预检索结果）",
+            max_results=MAX_SUB_RESULTS_PER_TASK,
             output_directive=output_directive,
         )
 
@@ -548,26 +814,44 @@ async def do_sub_research(
             return {
                 "lens": lens,
                 "lens_name": lens_config["name"],
+                "question": question,
+                "results": [],
                 "error": f"Sub-agent timed out after {SUB_RESEARCH_TIMEOUT_SECONDS:g}s",
             }
         except Exception as exc:
             return {
                 "lens": lens,
                 "lens_name": lens_config["name"],
+                "question": question,
+                "results": [],
                 "error": f"{type(exc).__name__}: {exc}",
             }
 
-        truncated = raw[:MAX_SUB_RESULT_CHARS]
+        results, parse_error = _extract_sub_results(raw, lens, lens_config["name"])
+        if parse_error is not None and "LLM error" not in raw:
+            # Keep the raw prose out of the main context, but surface the
+            # contract violation so the document audit can see it.
+            return {
+                "lens": lens,
+                "lens_name": lens_config["name"],
+                "question": question,
+                "results": [],
+                "error": parse_error,
+            }
+        if parse_error is not None:
+            # LLM backend failure — nothing usable returned.
+            return {
+                "lens": lens,
+                "lens_name": lens_config["name"],
+                "question": question,
+                "results": [],
+                "error": raw,
+            }
         return {
             "lens": lens,
             "lens_name": lens_config["name"],
             "question": question,
-            "summary": truncated,
-            "sources": [
-                r.get("url", "")
-                for r in (results_list if isinstance(results_list, list) else [])[:5]
-                if r.get("url")
-            ],
+            "results": results,
         }
 
     task_results = await asyncio.gather(
@@ -584,13 +868,23 @@ async def do_sub_research(
         else:
             normalized_results.append(r)
 
-    # Build aggregated text for the main LLM's context window
+    # Build aggregated text for the main LLM's context window: ONLY the
+    # distilled (claim, source_url, confidence) triples — raw sub-agent
+    # output, error details and search prose never enter the main context
+    # (P1 compression contract).
     aggregated_parts: list[str] = []
     for r in normalized_results:
-        if "error" in r:
-            aggregated_parts.append(f"### {r.get('lens', '?')}: ERROR — {r['error']}")
-        else:
-            aggregated_parts.append(f"### {r['lens_name']} ({r['lens']})\n{r.get('summary', '')}")
+        lens = r.get("lens", "?")
+        triples = r.get("results", [])
+        if not triples:
+            if "error" in r:
+                aggregated_parts.append(f"### {lens}: （子代理未返回结构化结果）")
+            continue
+        lines = [
+            f"- [{t.get('confidence', '猜测')}] {t.get('claim', '')} — {t.get('source_url', '')} (lens: {t.get('lens') or lens})"
+            for t in triples
+        ]
+        aggregated_parts.append(f"### {r.get('lens_name') or lens}\n" + "\n".join(lines))
 
     return {
         "task_results": normalized_results,

@@ -15,7 +15,16 @@ try:
         STAGE3_SYNTHESIS,
         STAGE35_ADVERSARIAL_GATE,
     )
-    from .tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
+    from .tools import (  # pyright: ignore[reportMissingImports]
+        audit_document,
+        do_challenge,
+        do_crystallize,
+        do_explore,
+        do_reflect,
+        do_sub_research,
+        validate_finding,
+        web_search,
+    )
 except ImportError:  # pragma: no cover - direct script execution path.
     from lenses import discover_lenses  # pyright: ignore[reportMissingImports]
     from memory import MemoryStore
@@ -25,7 +34,16 @@ except ImportError:  # pragma: no cover - direct script execution path.
         STAGE3_SYNTHESIS,
         STAGE35_ADVERSARIAL_GATE,
     )
-    from tools import do_challenge, do_crystallize, do_explore, do_reflect, do_sub_research, web_search  # pyright: ignore[reportMissingImports]
+    from tools import (  # pyright: ignore[reportMissingImports]
+        audit_document,
+        do_challenge,
+        do_crystallize,
+        do_explore,
+        do_reflect,
+        do_sub_research,
+        validate_finding,
+        web_search,
+    )
 
 
 @dataclass
@@ -53,7 +71,34 @@ class ResearchHandler:
         self.dynamic_lenses: list[dict[str, Any]] = []
         self.adversarial_results: dict[str, dict[str, Any]] = {}
         self.confidence_scores: dict[str, Any] = {}
+        # P6/P2: stage artifacts captured at stage boundaries (contradiction
+        # map, synthesis, gate results) — consumed by document_audit and
+        # persisted to disk before any context truncation.
+        self.stage_artifacts: dict[str, str] = {}
+        # P2/P8: document-level audit outcome and the gate credential that
+        # permits advancing to the final brief (audit pass OR explicit downgrade).
+        self.audit_result: dict[str, Any] | None = None
+        self.gate_credential: dict[str, Any] | None = None
+        self.open_questions: list[str] = []
+        # P5: schema violations recorded during finding ingestion.
+        self._finding_warnings: list[str] = []
         self.should_exit = False
+
+    def _append_finding(self, finding: dict[str, Any]) -> None:
+        """Append a finding, enforcing the P5 schema on claim-carrying entries.
+
+        Raw material records (exploration/reflection dumps without a ``claim``)
+        pass through untouched; claim-level findings are validated and
+        downgraded to 猜测 when they lack a locatable source.
+        """
+        if "claim" in finding:
+            normalized, warnings = validate_finding(finding)
+            self._finding_warnings.extend(warnings)
+            if warnings and self.on_status:
+                self.on_status(f"Finding schema: {warnings[0]}")
+            self.findings.append(normalized)
+        else:
+            self.findings.append(finding)
 
     async def dispatch(
         self,
@@ -78,7 +123,7 @@ class ResearchHandler:
             elif source == "memory":
                 self.on_status(f"Searching memory: {query}…")
         result = await do_explore(args, self.memory)
-        self.findings.append({"type": "exploration", "data": result})
+        self._append_finding({"type": "exploration", "data": result})
         return StepOutcome(result)
 
     async def do_reflect(self, args: dict[str, Any], response: Any) -> StepOutcome:
@@ -87,7 +132,7 @@ class ResearchHandler:
             self.on_status(f"Analyzing with {lens} lens…")
         self.lenses_used.add(lens)
         result = await do_reflect(args, self.llm)
-        self.findings.append({"type": "reflection", "lens": lens, "data": result})
+        self._append_finding({"type": "reflection", "lens": lens, "data": result})
         return StepOutcome(result)
 
     async def do_challenge(self, args: dict[str, Any], response: Any) -> StepOutcome:
@@ -140,6 +185,42 @@ class ResearchHandler:
             self.on_status("Crystallization saved; continuing research…")
         return StepOutcome(result)
 
+    async def do_document_audit(self, args: dict[str, Any], response: Any) -> StepOutcome:
+        """Document-level audit against the five-item rubric (P2).
+
+        Running the audit records the gate credential (P8): a pass grants
+        ``audit_pass``; an explicit ``downgrade_note`` on a failing audit
+        grants ``downgrade`` with the reason appended to ``open_questions``.
+        Without either, the state machine refuses to advance to the final brief.
+        """
+        if self.on_status:
+            self.on_status("Document audit: running 5-point rubric…")
+        result = await audit_document(
+            self.findings,
+            self.lenses_used,
+            self.dynamic_lenses,
+            self.stage_artifacts,
+            self.llm,
+            on_status=self.on_status,
+        )
+        self.audit_result = result
+
+        downgrade_note = str(args.get("downgrade_note", "")).strip()
+        if downgrade_note:
+            self.open_questions.append(f"[降级] {downgrade_note}")
+            self.gate_credential = {"type": "downgrade", "reason": downgrade_note}
+            result["downgrade_recorded"] = True
+        elif result.get("passed"):
+            self.gate_credential = {"type": "audit_pass", "detail": "document_audit passed"}
+
+        if self.on_status:
+            status = "PASS" if result.get("passed") else "FAIL"
+            self.on_status(
+                f"Document audit: {status} ({len(result.get('gaps', []))} gaps)"
+                + ("，已记录显式降级" if downgrade_note else "")
+            )
+        return StepOutcome(result)
+
     async def do_sub_research(self, args: dict[str, Any], response: Any) -> StepOutcome:
         """Fan-out parallel sub-agents: one ``sub_research`` call with multiple lens tasks.
 
@@ -158,13 +239,25 @@ class ResearchHandler:
 
         result = await do_sub_research(tasks, self.llm, self.memory, on_status=self.on_status, report_language=self.report_language)
 
-        # Register every lens so the Stage 1 gate (handler.py:166) advances.
+        # Register every lens so the Stage 1 gate (handler.py:166) advances,
+        # and ingest the distilled (claim, source_url, confidence) triples as
+        # schema-enforced findings for the document audit.
         for task in tasks:
             lens = str(task.get("lens", ""))
             if lens:
                 self.lenses_used.add(lens)
+        for task_result in result.get("task_results", []):
+            lens = str(task_result.get("lens", ""))
+            for triple in task_result.get("results", []):
+                if isinstance(triple, dict) and triple.get("claim"):
+                    self._append_finding({
+                        "claim": triple.get("claim"),
+                        "source_url": triple.get("source_url", ""),
+                        "confidence": triple.get("confidence", ""),
+                        "lens": lens or triple.get("lens", ""),
+                    })
 
-        self.findings.append({"type": "sub_research", "data": result})
+        self._append_finding({"type": "sub_research", "data": result})
         return StepOutcome(result)
 
     async def get_stage_prompt(self) -> Optional[str]:
@@ -239,12 +332,20 @@ class ResearchHandler:
             return STAGE35_ADVERSARIAL_GATE
 
         if self.stage == 3.5:
-            # The gate requires at least one real challenge. Findings that need
-            # revision remain attached to the session context; the final report
-            # generator can review them from the conversation history without a
-            # separate peer-review stage.
+            # The gate requires (a) at least one real challenge, and (b) a
+            # P8 gate credential: document_audit pass OR an explicit downgrade
+            # record. Without both, the pipeline keeps waiting. Findings that
+            # need revision remain attached to the session context; the final
+            # report generator can review them from the conversation history
+            # without a separate peer-review stage.
             if len(self.adversarial_results) == 0:
                 return None  # agent hasn't called challenge yet — keep waiting
+            if self.audit_result is None:
+                return None  # document audit not run — no gate credential yet
+            if self.audit_result.get("passed"):
+                self.gate_credential = {"type": "audit_pass", "detail": "document_audit passed"}
+            if self.gate_credential is None:
+                return None  # audit failed and no explicit downgrade — keep waiting
             self.stage = 4
             if self.on_status:
                 self.on_status("Adversarial gate complete — generating final brief…")

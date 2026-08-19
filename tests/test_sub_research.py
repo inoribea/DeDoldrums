@@ -9,7 +9,7 @@ from handler import ResearchHandler
 from llm import ChatResponse
 from memory import MemoryStore
 from tools import (
-    MAX_SUB_RESULT_CHARS,
+    MAX_SUB_RESULTS_PER_TASK,
     SUB_RESEARCH_TIMEOUT_SECONDS,
     do_sub_research,
 )
@@ -19,14 +19,19 @@ def _memory_store() -> MemoryStore:
     return MemoryStore(tempfile.mkdtemp())
 
 
+def _triple_json(claim: str = "Analysis result", source: str = "http://example.com/x") -> str:
+    """Return a valid P1 triple-contract JSON payload as an LLM would."""
+    return json.dumps({"results": [{"claim": claim, "source_url": source, "confidence": "已知", "lens": "skeptic"}]})
+
+
 class CountingLlmClient:
     """Tracks concurrent calls to verify fan-out parallelism."""
 
-    def __init__(self, response_text: str = "Analysis result") -> None:
+    def __init__(self, response_text: str | None = None) -> None:
         self.active = 0
         self.max_active = 0
         self.calls = 0
-        self.response_text = response_text
+        self.response_text = response_text if response_text is not None else _triple_json()
 
     async def chat(self, **kwargs: object) -> ChatResponse:
         self.calls += 1
@@ -49,7 +54,7 @@ class FailingLlmClient:
         self.calls += 1
         if self.calls == 2:
             return ChatResponse(error="simulated backend failure")
-        return ChatResponse(content="Analysis result")
+        return ChatResponse(content=_triple_json())
 
 
 class HangingLlmClient:
@@ -61,10 +66,11 @@ class HangingLlmClient:
 
 
 class LongResultLlmClient:
-    """Returns a result far exceeding the truncation cap."""
+    """Returns a result far exceeding the triple cap."""
 
     async def chat(self, **kwargs: object) -> ChatResponse:
-        return ChatResponse(content="x" * (MAX_SUB_RESULT_CHARS * 10))
+        many = [_triple_json(f"claim {i}") for i in range(50)]
+        return ChatResponse(content=json.dumps({"results": many}))
 
 
 def _make_tasks(n: int = 3) -> list[dict[str, str]]:
@@ -97,9 +103,9 @@ class SubResearchToolTests(unittest.TestCase):
         with mock.patch("tools.web_search", return_value=[]):
             result = asyncio.run(do_sub_research(tasks, client, _memory_store()))
 
-        # The second task should have an error in its summary
+        # The second task should carry the LLM error in its error field
         self.assertEqual(len(result["task_results"]), 3)
-        self.assertIn("LLM error", result["task_results"][1]["summary"])
+        self.assertIn("LLM error", result["task_results"][1]["error"])
 
         # json.dumps must not raise TypeError
         serialized = json.dumps(result, ensure_ascii=False)
@@ -120,7 +126,7 @@ class SubResearchToolTests(unittest.TestCase):
         finally:
             tools.SUB_RESEARCH_TIMEOUT_SECONDS = original_timeout
 
-    def test_long_result_is_truncated_to_cap(self) -> None:
+    def test_long_result_is_capped_at_max_triples(self) -> None:
         client = LongResultLlmClient()
         tasks = _make_tasks(1)
 
@@ -128,8 +134,8 @@ class SubResearchToolTests(unittest.TestCase):
             result = asyncio.run(do_sub_research(tasks, client, _memory_store()))
 
         self.assertEqual(len(result["task_results"]), 1)
-        summary = result["task_results"][0]["summary"]
-        self.assertLessEqual(len(summary), MAX_SUB_RESULT_CHARS)
+        triples = result["task_results"][0]["results"]
+        self.assertLessEqual(len(triples), MAX_SUB_RESULTS_PER_TASK)
 
     def test_unknown_lens_returns_error(self) -> None:
         client = CountingLlmClient()
@@ -149,6 +155,32 @@ class SubResearchToolTests(unittest.TestCase):
         self.assertEqual(result["task_results"], [])
         self.assertIn("error", result)
 
+    def test_non_json_output_never_reaches_main_context(self) -> None:
+        """P1: sub-agent prose that isn't the JSON contract is excluded."""
+        client = CountingLlmClient(response_text="自由格式的思考过程，不是 JSON")
+        tasks = _make_tasks(1)
+
+        with mock.patch("tools.web_search", return_value=[]):
+            result = asyncio.run(do_sub_research(tasks, client, _memory_store()))
+
+        task_result = result["task_results"][0]
+        self.assertEqual(task_result["results"], [])
+        self.assertNotIn("自由格式", result["aggregated"])
+        self.assertIn("error", task_result)
+
+    def test_aggregated_contains_only_triples(self) -> None:
+        """P1: the aggregated main-context text carries only distilled triples."""
+        client = CountingLlmClient()
+        tasks = _make_tasks(1)
+
+        with mock.patch("tools.web_search", return_value=[]):
+            result = asyncio.run(do_sub_research(tasks, client, _memory_store()))
+
+        aggregated = result["aggregated"]
+        self.assertIn("Analysis result", aggregated)
+        self.assertIn("http://example.com/x", aggregated)
+        self.assertNotIn("搜索过程", aggregated)
+
 
 class HandlerSubResearchTests(unittest.TestCase):
     """``ResearchHandler.do_sub_research`` integration tests."""
@@ -167,7 +199,14 @@ class HandlerSubResearchTests(unittest.TestCase):
         self.assertIn("skeptic", handler.lenses_used)
         self.assertIn("practitioner", handler.lenses_used)
         self.assertIn("academic", handler.lenses_used)
-        self.assertEqual(len(handler.findings), 1)
+        # P5: each distilled triple is ingested as a schema-enforced claim finding
+        # (3 triples) plus the sub_research record itself.
+        self.assertEqual(len(handler.findings), 4)
+        claim_findings = [f for f in handler.findings if f.get("claim")]
+        self.assertEqual(len(claim_findings), 3)
+        for finding in claim_findings:
+            self.assertIn("source_url", finding)
+            self.assertIn("confidence", finding)
         self.assertIsNone(outcome.next_prompt)
         self.assertFalse(outcome.should_exit)
 
