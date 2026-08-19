@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type {
   ChallengeResult,
+  CheckpointAction,
   FinalFinding,
+  HumanCheckpoint,
   LiveFinding,
   ResearchComplete,
   ResearchStatus,
@@ -25,6 +27,7 @@ interface UseResearchState {
   brief: string | null;
   finalFindings: FinalFinding[] | null;
   confidence: ResearchComplete["confidence"] | null;
+  checkpoint: HumanCheckpoint | null;
   error: string | null;
   statusLog: string[];
 }
@@ -38,6 +41,7 @@ const INITIAL_STATE: UseResearchState = {
   brief: null,
   finalFindings: null,
   confidence: null,
+  checkpoint: null,
   error: null,
   statusLog: [],
 };
@@ -45,6 +49,7 @@ const INITIAL_STATE: UseResearchState = {
 interface UseResearchReturn extends UseResearchState {
   start: (question: string) => Promise<void>;
   cancel: () => Promise<void>;
+  resolveCheckpoint: (action: CheckpointAction, note?: string) => Promise<void>;
   reset: () => void;
   savedQuestion: string | null;
   latestStatus: string | null;
@@ -63,6 +68,26 @@ function summarizeFinding(data: {
   const content = data.content ?? null;
   const summary = data.summary ?? (content ? truncate(content) : "");
   return { summary, content };
+}
+
+function normalizeCheckpoint(event: Record<string, unknown>): HumanCheckpoint {
+  const audit = event.audit;
+  const gaps = (audit as { gaps?: unknown } | undefined)?.gaps;
+  const passed = (audit as { passed?: unknown } | undefined)?.passed;
+  return {
+    checkpointId: typeof event.checkpointId === "string" ? event.checkpointId : "",
+    question: typeof event.question === "string" ? event.question : "",
+    contradictionMap:
+      typeof event.contradictionMap === "string" ? event.contradictionMap : "",
+    synthesis: typeof event.synthesis === "string" ? event.synthesis : "",
+    audit:
+      typeof passed === "boolean"
+        ? { passed, gaps: Array.isArray(gaps) ? (gaps as string[]) : [] }
+        : {},
+    openQuestions: Array.isArray(event.openQuestions)
+      ? (event.openQuestions as string[])
+      : [],
+  };
 }
 
 function loadSession(): { sid: string; question: string } | null {
@@ -98,7 +123,11 @@ export function useResearch(): UseResearchReturn {
   const { t } = useLanguage();
 
   // ── Timer: single useEffect, driven by status ──
-  const isBusy = state.status === "creating" || state.status === "starting" || state.status === "streaming";
+  const isBusy =
+    state.status === "creating" ||
+    state.status === "starting" ||
+    state.status === "streaming" ||
+    state.status === "checkpoint";
   useEffect(() => {
     if (!isBusy) return;
     const id = window.setInterval(() => {
@@ -140,8 +169,49 @@ export function useResearch(): UseResearchReturn {
     stopPolling();
     startingRef.current = false;
     clearSession();
-    setState((s) => ({ ...s, status: "cancelled" as const }));
+    setState((s) => ({ ...s, status: "cancelled" as const, checkpoint: null }));
   }, [stopPolling]);
+
+  const resolveCheckpoint = useCallback(
+    async (action: CheckpointAction, note?: string) => {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+      try {
+        const resp = await fetch(
+          `/api/session/${encodeURIComponent(sid)}/checkpoint`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, note: note ?? "" }),
+          },
+        );
+        // 409 means the bridge no longer has a checkpoint pending — the card is
+        // stale, so drop it rather than trapping the operator.
+        if (!resp.ok && resp.status !== 409) {
+          throw new Error(`Failed to resolve checkpoint (${resp.status})`);
+        }
+      } catch (err) {
+        console.warn("[checkpoint] resolve failed:", err);
+        throw err instanceof Error
+          ? err
+          : new Error("Unexpected checkpoint request failure");
+      }
+
+      if (action === "exit") {
+        // Operator aborted: the session is over, same terminal shape as cancel().
+        stopPolling();
+        startingRef.current = false;
+        completedAtRef.current = Date.now();
+        clearSession();
+        setState((s) => ({ ...s, status: "cancelled" as const, checkpoint: null }));
+        return;
+      }
+
+      // Research resumes server-side; polling was never stopped.
+      setState((s) => ({ ...s, status: "streaming" as const, checkpoint: null }));
+    },
+    [stopPolling],
+  );
 
   const processMessages = useCallback(
     (messages: string[]) => {
@@ -178,6 +248,14 @@ export function useResearch(): UseResearchReturn {
                 status: (event.status as string) || "completed",
                 results: event.results as Record<string, unknown> | undefined,
               },
+            }));
+          } else if (event.type === "human_checkpoint") {
+            // Research is paused server-side, not finished — keep polling so the
+            // later complete/error event is still picked up.
+            setState((s) => ({
+              ...s,
+              status: "checkpoint",
+              checkpoint: normalizeCheckpoint(event),
             }));
           } else if (event.type === "complete") {
             completedAtRef.current = Date.now();
@@ -336,7 +414,8 @@ export function useResearch(): UseResearchReturn {
           }));
           clearSession();
         } else {
-          setState((s) => ({ ...s, status: "streaming" }));
+          // A replayed human_checkpoint leaves the session paused — don't stomp it.
+          setState((s) => (s.status === "checkpoint" ? s : { ...s, status: "streaming" }));
           setSavedQuestion(saved.question);
           setupPolling(saved.sid, saved.question);
         }
@@ -349,5 +428,14 @@ export function useResearch(): UseResearchReturn {
 
   const latestStatus = state.statusLog.length > 0 ? state.statusLog[state.statusLog.length - 1] : null;
 
-  return { ...state, start, cancel, reset, savedQuestion, latestStatus, elapsedSeconds };
+  return {
+    ...state,
+    start,
+    cancel,
+    resolveCheckpoint,
+    reset,
+    savedQuestion,
+    latestStatus,
+    elapsedSeconds,
+  };
 }

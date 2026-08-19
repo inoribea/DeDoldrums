@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { CheckpointCard } from "@/components/checkpoint-card";
 import { FinalResults } from "@/components/final-results";
 import { Header } from "@/components/header";
 import { LiveOutput } from "@/components/live-output";
@@ -28,9 +29,11 @@ export default function Home() {
     brief,
     finalFindings,
     confidence,
+    checkpoint,
     error,
     start,
     cancel,
+    resolveCheckpoint,
     reset,
     statusLog,
     savedQuestion,
@@ -41,8 +44,13 @@ export default function Home() {
   // Restore saved question on reconnect
   const displayQuestion = question || savedQuestion || "";
 
+  const isCheckpoint = status === "checkpoint";
+  // A checkpoint is a server-side pause, not an end: the session is still live.
   const isBusy =
-    status === "creating" || status === "starting" || status === "streaming";
+    status === "creating" ||
+    status === "starting" ||
+    status === "streaming" ||
+    isCheckpoint;
   const isComplete = status === "complete";
   const showError = status === "error";
 
@@ -170,6 +178,11 @@ export default function Home() {
             />
           </CardContent>
         </Card>
+      )}
+
+      {/* Human checkpoint — pipeline paused, waiting on an operator decision. */}
+      {isCheckpoint && checkpoint && (
+        <CheckpointCard checkpoint={checkpoint} onResolve={resolveCheckpoint} />
       )}
 
       {/* Live output is execution evidence; completed sessions use the research brief below. */}

@@ -30,11 +30,30 @@ export interface ResearchComplete {
   confidence?: number | Record<string, unknown>;
 }
 
+export interface HumanCheckpoint {
+  /** Short hex id issued by the bridge for this pause. */
+  checkpointId: string;
+  /** The research question under review. */
+  question: string;
+  /** Stage 2 contradiction map as markdown text; may be empty. */
+  contradictionMap: string;
+  /** Stage 3 synthesis as markdown text; may be empty. */
+  synthesis: string;
+  /** Document audit outcome, or an empty object when the audit did not run. */
+  audit: { passed: boolean; gaps: string[] } | Record<string, never>;
+  /** Questions the pipeline still considers unresolved. */
+  openQuestions: string[];
+}
+
+/** Operator decision sent back to the bridge to release a checkpoint. */
+export type CheckpointAction = "continue" | "exit" | "feedback";
+
 export type ResearchStatus =
   | "idle"
   | "creating"
   | "starting"
   | "streaming"
+  | "checkpoint"
   | "complete"
   | "cancelled"
   | "error";

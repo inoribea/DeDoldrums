@@ -62,6 +62,24 @@ export interface Translations {
   "live.idle": string;
   "live.adversarialGate": string;
 
+  // Human checkpoint
+  "checkpoint.title": string;
+  "checkpoint.description": string;
+  "checkpoint.contradictionMap": string;
+  "checkpoint.synthesis": string;
+  "checkpoint.audit": string;
+  "checkpoint.gaps": string;
+  "checkpoint.pass": string;
+  "checkpoint.fail": string;
+  "checkpoint.notRun": string;
+  "checkpoint.openQuestions": string;
+  "checkpoint.continue": string;
+  "checkpoint.feedback": string;
+  "checkpoint.feedbackPlaceholder": string;
+  "checkpoint.stop": string;
+  "checkpoint.updated": string;
+  "checkpoint.empty": string;
+
   // Final results
   "results.title": string;
   "results.confidence": string;
@@ -126,6 +144,25 @@ const en: Translations = {
 "live.idle": "Findings will appear here as the agent researches.",
   "live.adversarialGate": "Adversarial gate",
 
+  "checkpoint.title": "Human checkpoint",
+  "checkpoint.description":
+    "The adversarial gate passed. Review the evidence, then decide how the final brief should be written.",
+  "checkpoint.contradictionMap": "Contradiction map",
+  "checkpoint.synthesis": "Synthesis",
+  "checkpoint.audit": "Document audit",
+  "checkpoint.gaps": "Gaps",
+  "checkpoint.pass": "Pass",
+  "checkpoint.fail": "Fail",
+  "checkpoint.notRun": "Not run",
+  "checkpoint.openQuestions": "Open questions",
+  "checkpoint.continue": "Continue to final brief",
+  "checkpoint.feedback": "Send feedback",
+  "checkpoint.feedbackPlaceholder":
+    "Optional instruction to steer the final brief — e.g. weigh the regulatory lens more heavily.",
+  "checkpoint.stop": "Stop here",
+  "checkpoint.updated": "Decision sent. Resuming research…",
+  "checkpoint.empty": "Nothing recorded for this section.",
+
   "results.title": "Research brief",
   "results.confidence": "confidence",
   "results.keyFindings": "Key findings",
@@ -184,6 +221,25 @@ const zh: Translations = {
 "live.thinking": "思考中",
 "live.idle": "发现将在此处显示，随研究进行实时更新。",
   "live.adversarialGate": "对抗验证闸门",
+
+  "checkpoint.title": "人工检查点",
+  "checkpoint.description":
+    "对抗验证闸门已通过。请审阅下方证据，再决定最终简报的写法。",
+  "checkpoint.contradictionMap": "矛盾映射",
+  "checkpoint.synthesis": "综合合成",
+  "checkpoint.audit": "文档审计",
+  "checkpoint.gaps": "缺口",
+  "checkpoint.pass": "通过",
+  "checkpoint.fail": "未通过",
+  "checkpoint.notRun": "未执行",
+  "checkpoint.openQuestions": "待解问题",
+  "checkpoint.continue": "继续生成最终简报",
+  "checkpoint.feedback": "发送反馈",
+  "checkpoint.feedbackPlaceholder":
+    "可选：给最终简报的修改指令——例如「更侧重监管视角」。",
+  "checkpoint.stop": "在此停止",
+  "checkpoint.updated": "决定已发送，研究继续进行…",
+  "checkpoint.empty": "本节暂无内容。",
 
   "results.title": "研究简报",
   "results.confidence": "置信度",
