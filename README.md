@@ -30,7 +30,7 @@ Most research agents stop at "search → summarize → cite." DeDoldrums adds tw
 
 | What | Why It Matters |
 |:---|:---|
-| **Enforced adversarial gate** | The pipeline physically blocks after synthesis until at least one finding passes a structured challenge — logic flaws, hidden assumptions, missing evidence, alternative explanations. No rubber-stamping. Findings that fail are flagged for revision and carried into peer review. |
+| **Enforced adversarial gate** | The pipeline physically blocks after synthesis until at least one finding passes a structured challenge — logic flaws, hidden assumptions, missing evidence, alternative explanations. No rubber-stamping. Findings that fail are flagged for revision and carried into the final brief. |
 | **Role-based LLM routing** | Four research roles (`tool_calling`, `creative`, `conversational`, `content_review`) can each use a different model and provider. Your orchestrator runs on GPT-5.5 while divergent thinking uses Claude. The adversarial gate gets its own model — no self-review bias. |
 
 Under the hood: a 4.5-stage STORM pipeline, dynamic perspective discovery, fan-out parallel sub-agents, and L0-L4 layered memory that persists insights across sessions.
@@ -154,7 +154,7 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 |:---|:---|:---|
 | **GenericAgent** | Execution framework, Goal Mode, layered memory skeleton | Research-specific tools, knowledge-domain memory layers (L1-L3) |
 | **STORM** (Shao et al., NAACL 2024) | Multi-perspective research framework | Dynamic lens discovery (generated from search, not pre-defined), first-class tool identities for lenses, enforced adversarial gate, fan-out sub-agents |
-| **STORM community** | Contradiction mapping, peer review mechanisms | Tight integration with adversarial gate — gated findings flow into peer review |
+| **STORM community** | Contradiction mapping, peer review mechanisms | Tight integration with adversarial gate — flagged findings carry into the final brief (the separate peer-review stage was removed in favor of the gate) |
 | **Caesar** (Liang et al., 2026) | Generator-Verifier adversarial loop concept | Hard-gated pipeline enforcement — the loop blocks, not just suggests |
 
 ---
