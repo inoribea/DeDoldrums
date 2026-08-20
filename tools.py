@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
+import socket
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -32,6 +34,27 @@ CONFIDENCE_INFERRED = "推断"
 CONFIDENCE_GUESS = "猜测"
 CONFIDENCE_LEVELS = (CONFIDENCE_KNOWN, CONFIDENCE_INFERRED, CONFIDENCE_GUESS)
 MAX_SUB_RESULTS_PER_TASK = 10
+
+# ── Claim-support audit (Top-1 follow-up): source-aware claim statuses ──
+CLAIM_SUPPORT_SUPPORTED = "supported"
+CLAIM_SUPPORT_WEAKLY_SUPPORTED = "weakly_supported"
+CLAIM_SUPPORT_UNSUPPORTED = "unsupported"
+CLAIM_SUPPORT_WRONG_SOURCE = "wrong_source"
+CLAIM_SUPPORT_MISSING_SOURCE = "missing_source"
+CLAIM_SUPPORT_STATUSES = (
+    CLAIM_SUPPORT_SUPPORTED,
+    CLAIM_SUPPORT_WEAKLY_SUPPORTED,
+    CLAIM_SUPPORT_UNSUPPORTED,
+    CLAIM_SUPPORT_WRONG_SOURCE,
+    CLAIM_SUPPORT_MISSING_SOURCE,
+)
+BLOCKING_CLAIM_SUPPORT_STATUSES = {
+    CLAIM_SUPPORT_UNSUPPORTED,
+    CLAIM_SUPPORT_WRONG_SOURCE,
+    CLAIM_SUPPORT_MISSING_SOURCE,
+}
+MAX_CLAIM_SUPPORT_SOURCE_CHECKS = 5
+MAX_CLAIM_SUPPORT_SOURCE_CHARS = 1200
 
 
 def validate_finding(finding: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -84,6 +107,21 @@ COUNTEREVIDENCE: PASS|FAIL|INCONCLUSIVE — 具体理由
 BLIND_SPOTS: PASS|FAIL|INCONCLUSIVE — 具体理由"""
 
 
+CLAIM_SUPPORT_AUDIT_PROMPT = """你是来源归因审计员。逐条判断声明是否被其指定来源支持。
+
+状态定义（只能选择一个）:
+- supported: 来源直接、具体地支持该声明。
+- weakly_supported: 来源与声明相关且提供部分支持，但证据不完整、过于概括或需要推断。
+- unsupported: 来源可访问且相关，但没有支持该声明或与其矛盾。
+- wrong_source: 来源可访问，但与声明主题无关、明显挂错来源。
+
+对每条声明只输出一行，不要输出其他内容:
+CLAIM <id>: supported|weakly_supported|unsupported|wrong_source — 最多一句简短理由
+
+## 待审计声明及来源摘录
+{claims}"""
+
+
 def _parse_audit_verdicts(text: str) -> dict[str, dict[str, Any]]:
     """Parse the audit LLM's structured verdict lines into rubric results."""
     verdicts: dict[str, dict[str, Any]] = {}
@@ -99,6 +137,147 @@ def _parse_audit_verdicts(text: str) -> dict[str, dict[str, Any]]:
     return verdicts
 
 
+def _claim_support_entry(
+    finding: dict[str, Any],
+    index: int,
+    status: str,
+    detail: str,
+) -> dict[str, str]:
+    """Return one bounded, serializable claim-support record."""
+    claim_id = str(finding.get("finding_id", "")).strip() or f"claim_{index + 1}"
+    return {
+        "claim_id": claim_id,
+        "claim": str(finding.get("claim", "")).strip(),
+        "source_url": str(finding.get("source_url", "")).strip(),
+        "status": status,
+        "detail": detail[:240],
+    }
+
+
+def _parse_claim_support_verdicts(text: str) -> dict[str, tuple[str, str]]:
+    """Parse bounded source-support verdicts keyed by claim id."""
+    verdicts: dict[str, tuple[str, str]] = {}
+    pattern = re.compile(
+        r"^CLAIM\s+([^:]+):\s*"
+        r"(supported|weakly_supported|unsupported|wrong_source)"
+        r"(?:\s*[—-]\s*(.*))?$",
+        re.IGNORECASE,
+    )
+    for line in text.splitlines():
+        match = pattern.match(line.strip())
+        if match is None:
+            continue
+        claim_id = match.group(1).strip()
+        status = match.group(2).lower()
+        detail = (match.group(3) or "").strip()
+        verdicts[claim_id] = (status, detail)
+    return verdicts
+
+
+async def _audit_claim_support(
+    claim_findings: list[dict[str, Any]],
+    llm_client: Any,
+    source_fetcher: Any = None,
+    on_status: Any = None,
+) -> list[dict[str, str]]:
+    """Classify claim-to-source support without retaining source prose.
+
+    At most five source pages enter the content-review prompt. Claims beyond
+    the bounded sample remain visibly ``weakly_supported`` rather than being
+    silently treated as verified; source-less claims always fail immediately.
+    A configured fetcher plus an unparsable/unavailable verifier fails closed.
+    """
+    records: list[dict[str, str] | None] = [None] * len(claim_findings)
+    verifiable: list[tuple[int, dict[str, Any]]] = []
+
+    for index, finding in enumerate(claim_findings):
+        source_url = str(finding.get("source_url", "")).strip()
+        if not source_url:
+            records[index] = _claim_support_entry(
+                finding,
+                index,
+                CLAIM_SUPPORT_MISSING_SOURCE,
+                "No source_url was recorded for this claim.",
+            )
+        elif source_fetcher is None:
+            records[index] = _claim_support_entry(
+                finding,
+                index,
+                CLAIM_SUPPORT_WEAKLY_SUPPORTED,
+                "Source URL is present but source content was not independently checked.",
+            )
+        elif len(verifiable) < MAX_CLAIM_SUPPORT_SOURCE_CHECKS:
+            verifiable.append((index, finding))
+        else:
+            records[index] = _claim_support_entry(
+                finding,
+                index,
+                CLAIM_SUPPORT_WEAKLY_SUPPORTED,
+                "Source content was not independently checked because this audit is bounded to five claims.",
+            )
+
+    if not verifiable:
+        return [record for record in records if record is not None]
+
+    if on_status:
+        on_status(f"Document audit: checking source support for {len(verifiable)} claim(s)…")
+
+    fetched = await asyncio.gather(
+        *(source_fetcher(str(finding.get("source_url", ""))) for _, finding in verifiable),
+        return_exceptions=True,
+    )
+    prompt_entries: list[tuple[int, dict[str, Any], str]] = []
+    for (index, finding), fetched_content in zip(verifiable, fetched):
+        if isinstance(fetched_content, BaseException) or not str(fetched_content).strip():
+            records[index] = _claim_support_entry(
+                finding,
+                index,
+                CLAIM_SUPPORT_WRONG_SOURCE,
+                "The declared source could not be retrieved as usable evidence.",
+            )
+            continue
+        prompt_entries.append((index, finding, str(fetched_content)[:MAX_CLAIM_SUPPORT_SOURCE_CHARS]))
+
+    if not prompt_entries:
+        return [record for record in records if record is not None]
+
+    prompt_claims = "\n\n".join(
+        "\n".join((
+            f"### CLAIM {str(finding.get('finding_id', '')).strip() or f'claim_{index + 1}'}",
+            f"Claim: {str(finding.get('claim', '')).strip()}",
+            f"Source URL: {str(finding.get('source_url', '')).strip()}",
+            f"Source excerpt: {content}",
+        ))
+        for index, finding, content in prompt_entries
+    )
+    try:
+        verdict_text = await _call_llm(
+            llm_client,
+            CLAIM_SUPPORT_AUDIT_PROMPT.format(claims=prompt_claims),
+            0.1,
+            role="content_review",
+        )
+        verdicts = _parse_claim_support_verdicts(verdict_text)
+    except Exception:
+        verdicts = {}
+
+    for index, finding, _ in prompt_entries:
+        claim_id = str(finding.get("finding_id", "")).strip() or f"claim_{index + 1}"
+        verdict = verdicts.get(claim_id)
+        if verdict is None:
+            records[index] = _claim_support_entry(
+                finding,
+                index,
+                CLAIM_SUPPORT_UNSUPPORTED,
+                "The source-support verifier returned no valid verdict for this claim.",
+            )
+            continue
+        status, detail = verdict
+        records[index] = _claim_support_entry(finding, index, status, detail)
+
+    return [record for record in records if record is not None]
+
+
 async def audit_document(
     findings: list[dict[str, Any]],
     lenses_used: set[str],
@@ -106,14 +285,16 @@ async def audit_document(
     stage_artifacts: dict[str, str],
     llm_client: Any,
     on_status: Any = None,
+    source_fetcher: Any = None,
 ) -> dict[str, Any]:
-    """Run the five-item document audit (P2) over the research as a whole.
+    """Run the six-item document audit (P2) over the research as a whole.
 
     Deterministic rubric items (source locatability, label correctness,
     coverage) are computed from the findings ledger — no model self-report.
     The two judgment items (counterevidence, honest blind spots) are checked
     against the synthesis/contradiction-map artifacts by the content-review
-    role, never by the orchestrator that produced them.
+    role, never by the orchestrator that produced them. Claim-to-source support
+    is checked independently when ``source_fetcher`` is configured.
     """
     claim_findings = [f for f in findings if isinstance(f, dict) and f.get("claim")]
     results: dict[str, dict[str, Any]] = {}
@@ -155,6 +336,27 @@ async def audit_document(
     results["coverage_complete"] = {
         "passed": not uncovered,
         "detail": f"{len(lens_keys)} 个 lens，{len(uncovered)} 个无产出: {', '.join(uncovered) or '无'}",
+    }
+
+    # Rubric 6 — source-aware claim support. The structured records are
+    # returned separately so the gate, checkpoint, and final brief can expose
+    # precise statuses without retaining retrieved source prose.
+    claim_support = await _audit_claim_support(
+        claim_findings,
+        llm_client,
+        source_fetcher=source_fetcher,
+        on_status=on_status,
+    )
+    blocking_support = [
+        record for record in claim_support
+        if record["status"] in BLOCKING_CLAIM_SUPPORT_STATUSES
+    ]
+    results["claim_support"] = {
+        "passed": not blocking_support,
+        "detail": (
+            f"{len(claim_support)} 条 claim 已分类，"
+            f"{len(blocking_support)} 条来源支持失败"
+        ),
     }
 
     # Rubrics 2 & 3 — LLM-judged against the synthesis artifact.
@@ -200,6 +402,7 @@ async def audit_document(
         "passed": not gaps,
         "gaps": gaps,
         "rubric": results,
+        "claim_support": claim_support,
     }
 
 
@@ -322,7 +525,7 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "document_audit",
-            "description": "文档级审计：对研究整体执行五条 rubric（来源可定位/反例考虑/盲点诚实/标签正确/覆盖完整），输出 pass/fail 与缺口清单（≤5 条）。在对抗闸门后、生成最终简报前调用；audit 未通过时传 downgrade_note 记录显式降级理由。",
+            "description": "文档级审计：对研究整体执行六条 rubric（来源可定位/反例考虑/盲点诚实/标签正确/覆盖完整/claim-source 支持），并给每条 claim 返回 supported、weakly_supported、unsupported、wrong_source 或 missing_source。输出 pass/fail 与缺口清单（≤5 条）。在对抗闸门后、生成最终简报前调用；audit 未通过时传 downgrade_note 记录显式降级理由。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -892,17 +1095,49 @@ async def do_sub_research(
     }
 
 
-async def fetch_and_extract(url: str) -> str:
-    """Fetch an HTTP(S) page and return its readable text content."""
+async def _validate_public_http_url(url: str) -> None:
+    """Reject non-HTTP(S) and private-network fetch targets before a request."""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("url must be an absolute HTTP(S) URL")
+    hostname = parsed.hostname
+    if hostname is None:
+        raise ValueError("url must include a hostname")
+
+    try:
+        addresses = await asyncio.get_running_loop().getaddrinfo(
+            hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise ValueError("url hostname could not be resolved") from exc
+
+    for _, _, _, _, address in addresses:
+        candidate = ipaddress.ip_address(address[0])
+        if not candidate.is_global:
+            raise ValueError("url must not resolve to a private or reserved address")
+
+
+async def fetch_and_extract(url: str) -> str:
+    """Fetch a public HTTP(S) page and return its readable text content."""
 
     headers = {"User-Agent": "ResearchAgent/1.0 (+https://example.invalid)"}
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0, headers=headers) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        async with httpx.AsyncClient(follow_redirects=False, timeout=15.0, headers=headers) as client:
+            current_url = url
+            for redirect_count in range(6):
+                await _validate_public_http_url(current_url)
+                response = await client.get(current_url)
+                if not response.is_redirect:
+                    response.raise_for_status()
+                    break
+                location = response.headers.get("location")
+                if not location:
+                    raise RuntimeError("redirect response is missing a Location header")
+                if redirect_count == 5:
+                    raise RuntimeError("too many redirects")
+                current_url = urljoin(current_url, location)
     except httpx.HTTPError as exc:
         raise RuntimeError(f"could not fetch {url}: {exc}") from exc
 

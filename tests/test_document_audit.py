@@ -9,7 +9,7 @@ from unittest import mock
 from handler import ResearchHandler
 from llm import ChatResponse
 from memory import MemoryStore
-from tools import audit_document
+from tools import audit_document, fetch_and_extract
 
 
 class AuditLlmClient:
@@ -22,6 +22,30 @@ class AuditLlmClient:
     async def chat(self, **kwargs: object) -> ChatResponse:
         self.calls += 1
         return ChatResponse(content=self.text)
+
+
+class SourceAuditLlmClient(AuditLlmClient):
+    """Return distinct verdicts for the document and source-support audits."""
+
+    def __init__(self, source_text: str) -> None:
+        super().__init__()
+        self.source_text = source_text
+
+    async def chat(self, **kwargs: object) -> ChatResponse:
+        self.calls += 1
+        messages = kwargs.get("messages", [])
+        prompt = str(messages[0]["content"]) if messages else ""
+        if "来源归因审计员" in prompt:
+            return ChatResponse(content=self.source_text)
+        return ChatResponse(content=self.text)
+
+
+async def _usable_source(_: str) -> str:
+    return "A retrieved source excerpt that can be independently reviewed."
+
+
+async def _unavailable_source(_: str) -> str:
+    raise RuntimeError("source unavailable")
 
 
 def _findings() -> list[dict]:
@@ -133,6 +157,53 @@ class AuditRubricTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertIn("passed", result)
 
+    def test_claim_support_classifications_block_unsupported_sources(self) -> None:
+        findings = _findings() + [
+            {"claim": "f4", "source_url": "http://d.example", "confidence": "推断", "lens": "historian"},
+            {"claim": "f5", "source_url": "", "confidence": "猜测", "lens": "historian"},
+        ]
+        client = SourceAuditLlmClient(
+            "\n".join((
+                "CLAIM claim_1: supported — direct evidence",
+                "CLAIM claim_2: weakly_supported — related but incomplete",
+                "CLAIM claim_3: unsupported — source does not establish the claim",
+                "CLAIM claim_4: wrong_source — unrelated source",
+            ))
+        )
+        result = asyncio.run(audit_document(
+            findings,
+            {"skeptic", "practitioner", "academic", "historian"},
+            [{"key": key} for key in ("skeptic", "practitioner", "academic", "historian")],
+            _artifacts(),
+            client,
+            source_fetcher=_usable_source,
+        ))
+
+        statuses = [record["status"] for record in result["claim_support"]]
+        self.assertEqual(
+            statuses,
+            ["supported", "weakly_supported", "unsupported", "wrong_source", "missing_source"],
+        )
+        self.assertFalse(result["passed"])
+        self.assertTrue(any(gap.startswith("claim_support:") for gap in result["gaps"]))
+
+    def test_unavailable_source_fails_closed_as_wrong_source(self) -> None:
+        result = asyncio.run(audit_document(
+            _findings(),
+            {"skeptic", "practitioner", "academic"},
+            [{"key": key} for key in ("skeptic", "practitioner", "academic")],
+            _artifacts(),
+            AuditLlmClient(),
+            source_fetcher=_unavailable_source,
+        ))
+
+        self.assertFalse(result["passed"])
+        self.assertTrue(all(record["status"] == "wrong_source" for record in result["claim_support"]))
+
+    def test_source_fetcher_rejects_private_network_targets(self) -> None:
+        with self.assertRaisesRegex(ValueError, "private or reserved"):
+            asyncio.run(fetch_and_extract("http://127.0.0.1/internal"))
+
 
 class HandlerAuditTests(unittest.TestCase):
     def test_do_document_audit_records_result_and_pass_credential(self) -> None:
@@ -141,6 +212,7 @@ class HandlerAuditTests(unittest.TestCase):
             handler.stage_artifacts = dict(_artifacts())
             handler.lenses_used = {"skeptic", "practitioner", "academic"}
             handler.dynamic_lenses = [{"key": k} for k in ("skeptic", "practitioner", "academic")]
+            handler.source_fetcher = None
             for finding in _findings():
                 handler._append_finding(finding)
 
@@ -156,6 +228,7 @@ class HandlerAuditTests(unittest.TestCase):
             handler.stage_artifacts = {}
             handler.lenses_used = {"skeptic"}
             handler.dynamic_lenses = [{"key": "skeptic"}, {"key": "academic"}]
+            handler.source_fetcher = None
             handler._append_finding({"claim": "x", "source_url": "http://a.example", "confidence": "已知", "lens": "skeptic"})
 
             outcome = asyncio.run(handler.do_document_audit(
@@ -166,6 +239,36 @@ class HandlerAuditTests(unittest.TestCase):
             self.assertTrue(handler.open_questions)
             self.assertIn("降级", handler.open_questions[0])
             self.assertTrue(outcome.data.get("downgrade_recorded"))
+
+    def test_unsupported_claim_support_blocks_p8_without_downgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            handler = ResearchHandler(
+                "Q",
+                MemoryStore(directory),
+                SourceAuditLlmClient(
+                    "\n".join((
+                        "CLAIM finding_1: supported — direct evidence",
+                        "CLAIM finding_2: unsupported — evidence is absent",
+                        "CLAIM finding_3: supported — direct evidence",
+                    ))
+                ),
+            )
+            handler.stage = 3.5
+            handler.adversarial_results = {"finding_1": {"status": "challenged", "data": {}}}
+            handler.stage_artifacts = _artifacts()
+            handler.lenses_used = {"skeptic", "practitioner", "academic"}
+            handler.dynamic_lenses = [{"key": key} for key in handler.lenses_used]
+            handler.source_fetcher = _usable_source
+            for finding in _findings():
+                handler._append_finding(finding)
+
+            outcome = asyncio.run(handler.do_document_audit({}, None))
+            prompt = asyncio.run(handler.get_stage_prompt())
+
+        self.assertFalse(outcome.data["passed"])
+        self.assertIsNone(handler.gate_credential)
+        self.assertEqual(handler.stage, 3.5)
+        self.assertIsNone(prompt)
 
 
 if __name__ == "__main__":
