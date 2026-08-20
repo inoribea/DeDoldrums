@@ -162,13 +162,28 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 
 ## Convergent Validation from Independent Research
 
-The following 2026 arXiv preprints identify failure modes and design targets that align with mechanisms already defined in DeDoldrums (P1-P8). They are cited as convergent evidence, not as implementation sources — DeDoldrums does not inherit or implement code, frameworks, or evaluation pipelines from these works.
+### Operational safeguards (P1-P8)
+
+The labels below name the concrete safeguards introduced by the retrofit. They are implementation labels, not paper terminology.
+
+| Label | Safeguard | What it does |
+|:---|:---|:---|
+| P1 | Bounded evidence handoff | Each fan-out sub-agent returns at most ten compact `(claim, source_url, confidence)` records instead of raw research prose. |
+| P2 | Document-level audit | Before the gate passes, the whole research document is checked for source locatability, counterevidence, honest blind spots, label correctness, lens coverage, and claim-source support. |
+| P3 | Mandatory blind spots | Every synthesis must contain a concrete `## Blind Spots` section describing what was searched, what was not tried, and how those gaps could affect the conclusion. |
+| P4 | Human checkpoint | By default, a person can pause after the gate to inspect the contradiction map, synthesis, and audit gaps before the final brief is generated. |
+| P5 | Structured findings ledger | Claim findings are normalized to a claim, locatable source URL, confidence label, and lens; a source-less claim is automatically downgraded to a guess. |
+| P6 | Persist before compaction | Stage artifacts are saved to the session archive before context truncation, so interrupted research can be recovered. |
+| P7 | Documentation-layout alignment | The README architecture map is kept aligned with the repository's actual root-level layout. |
+| P8 | Explicit gate credential | The final brief requires a passing document audit or a specific recorded downgrade; a challenge call alone cannot open the gate. |
+
+The following 2026 arXiv preprints identify failure modes and design targets that converge with these safeguards. They are cited as convergent evidence, not as implementation sources — DeDoldrums does not inherit or implement code, frameworks, or evaluation pipelines from these works.
 
 | Preprint | Key Alignment |
 |:---|:---|
-| [**From Fluent to Verifiable**](https://arxiv.org/abs/2602.13855) (Rasheed et al., 2026 preprint) | Aligns with P2/P5/P6/P8: treats provenance coverage, provenance soundness, and contradiction transparency as first-class audit targets for deep research agents. |
-| [**Cited but Not Verified**](https://arxiv.org/abs/2605.06635) (Onweller et al., 2026 preprint) | Aligns with P1/P2/P5: evaluates source attribution through link accessibility, topical relevance, and fact checking; shows that surface-level citation quality does not imply factual reliability. |
-| [**AutoResearch**](https://arxiv.org/abs/2607.02520) (Kumar et al., 2026 preprint) | Aligns with P2/P4/P8: uses citation verification and claim-support auditing as runtime filtering signals in a multi-agent research workflow. |
+| [**From Fluent to Verifiable**](https://arxiv.org/abs/2602.13855) (Rasheed et al., 2026 preprint) | Converges on provenance coverage, provenance soundness, and contradiction transparency as first-class audit targets for deep-research agents. |
+| [**Cited but Not Verified**](https://arxiv.org/abs/2605.06635) (Onweller et al., 2026 preprint) | Converges on checking whether cited sources are reachable, topically relevant, and factually supportive — surface-level citation quality is not factual reliability. |
+| [**AutoResearch**](https://arxiv.org/abs/2607.02520) (Kumar et al., 2026 preprint) | Converges on citation verification and claim-support auditing as runtime filtering signals in multi-agent research workflows. |
 
 ---
 
