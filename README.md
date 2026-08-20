@@ -121,7 +121,7 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 | `challenge` | 4-mode adversarial pressure test — logic, assumptions, evidence, alternatives — runs concurrently |
 | `crystallize` | Persist breakthrough insights into layered memory for cross-session reuse |
 | `sub_research` | Fan-out parallel sub-agents: pre-fetch search per lens, concurrent single-turn LLM analysis; returns ≤10 (claim, source_url, confidence) triples per task |
-| `document_audit` | Document-level audit against a 5-point rubric (source locatability, counterevidence, honest blind spots, correct labels, coverage) before the gate passes |
+| `document_audit` | Document-level audit against a 6-point rubric (source locatability, counterevidence, honest blind spots, correct labels, coverage, and claim-source support) before the gate passes. Each claim is classified as supported, weakly supported, unsupported, wrong source, or missing source. |
 
 ---
 
@@ -154,8 +154,21 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 |:---|:---|:---|
 | **GenericAgent** | Execution framework, Goal Mode, layered memory skeleton | Research-specific tools, knowledge-domain memory layers (L1-L3) |
 | **STORM** (Shao et al., NAACL 2024) | Multi-perspective research framework | Dynamic lens discovery (generated from search, not pre-defined), first-class tool identities for lenses, enforced adversarial gate, fan-out sub-agents |
+| **Co-STORM** (Jiang et al., EMNLP 2024) | Human-in-the-loop participation and steering in multi-perspective research | Human Checkpoint — an optional post-gate pause where a human reviews contradiction map, synthesis, and audit gaps before the final brief |
 | **STORM community** | Contradiction mapping, peer review mechanisms | Tight integration with adversarial gate — flagged findings carry into the final brief (the separate peer-review stage was removed in favor of the gate) |
 | **Caesar** (Liang et al., 2026) | Generator-Verifier adversarial loop concept | Hard-gated pipeline enforcement — the loop blocks, not just suggests |
+
+---
+
+## Convergent Validation from Independent Research
+
+The following 2026 arXiv preprints identify failure modes and design targets that align with mechanisms already defined in DeDoldrums (P1-P8). They are cited as convergent evidence, not as implementation sources — DeDoldrums does not inherit or implement code, frameworks, or evaluation pipelines from these works.
+
+| Preprint | Key Alignment |
+|:---|:---|
+| [**From Fluent to Verifiable**](https://arxiv.org/abs/2602.13855) (Rasheed et al., 2026 preprint) | Aligns with P2/P5/P6/P8: treats provenance coverage, provenance soundness, and contradiction transparency as first-class audit targets for deep research agents. |
+| [**Cited but Not Verified**](https://arxiv.org/abs/2605.06635) (Onweller et al., 2026 preprint) | Aligns with P1/P2/P5: evaluates source attribution through link accessibility, topical relevance, and fact checking; shows that surface-level citation quality does not imply factual reliability. |
+| [**AutoResearch**](https://arxiv.org/abs/2607.02520) (Kumar et al., 2026 preprint) | Aligns with P2/P4/P8: uses citation verification and claim-support auditing as runtime filtering signals in a multi-agent research workflow. |
 
 ---
 
@@ -164,6 +177,8 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # adversarial gate, challenge execu
 Built on the shoulders of [**GenericAgent**](https://github.com/lsdefine/GenericAgent) — the `StepOutcome`-dispatch pattern, Goal Mode self-driven loop, and layered memory design are directly ported from GA.
 
 Thanks to the [**STORM paper**](https://arxiv.org/abs/2402.14207) (Shao et al., NAACL 2024) for the multi-perspective research framework that inspired our dynamic lens approach, and the [community fork](https://github.com/kamilwpaczce-svg/storm-research-method) for contradiction mapping and peer review mechanisms.
+
+Thanks to [**Co-STORM**](https://arxiv.org/abs/2408.15232) (Jiang et al., EMNLP 2024, Stanford OVAL) for demonstrating that human participation and steering make multi-perspective research more trustworthy — the inspiration for our optional Human Checkpoint.
 
 Thanks to **Caesar** (Liang et al., 2026) for the Generator-Verifier adversarial framework that inspired the gate design.
 

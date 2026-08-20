@@ -121,7 +121,7 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # 对抗闸门，挑战执行
 | `challenge` | 4 模式对抗压力测试——逻辑、假设、证据、替代解释——并发执行 |
 | `crystallize` | 将突破性洞察固化到分层记忆，供跨会话复用 |
 | `sub_research` | 扇出并行子代理：按透镜预取搜索、并发单轮 LLM 分析；每个任务返回 ≤10 条（claim, source_url, confidence）三元组 |
-| `document_audit` | 闸门通过前按 5 项指标（来源可定位、反证、诚实盲点、标签正确、覆盖度）对文档进行审计 |
+| `document_audit` | 闸门通过前按 6 项指标（来源可定位、反证、诚实盲点、标签正确、覆盖度、claim-source 支持度）对文档进行审计；每条 claim 分类为 supported、weakly_supported、unsupported、wrong_source 或 missing_source |
 
 ---
 
@@ -154,8 +154,21 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # 对抗闸门，挑战执行
 |:---|:---|:---|
 | **GenericAgent** | 执行框架、Goal Mode、分层记忆骨架 | 研究专用工具、知识域记忆层（L1-L3） |
 | **STORM**（Shao et al., NAACL 2024） | 多视角研究框架 | 动态视角发现（从搜索生成而非预定义）、透镜一等公民工具身份、强制对抗闸门、扇出子代理 |
+| **Co-STORM**（Jiang et al., EMNLP 2024） | 多视角研究中的人类参与与引导（human-in-the-loop） | 人工检查点——对抗闸门后、最终简报前的可选暂停，由人类审阅矛盾地图、综合结果与审计缺口 |
 | **STORM 社区衍生版** | 矛盾映射、同行评审机制 | 与对抗闸门的紧密集成——被标记的发现直接进入最终简报（独立的同行评审阶段已移除，由闸门取代） |
 | **Caesar**（Liang et al., 2026） | Generator-Verifier 对抗循环概念 | 硬性闸门管线强制——循环阻断，而非仅建议 |
+
+---
+
+## 独立研究的趋同佐证
+
+以下 2026 年 arXiv 预印本指出的失效模式和设计目标，与 DeDoldrums 已定义的 P1-P8 机制趋同。它们作为独立佐证引用，而非实现来源——DeDoldrums 没有继承或实现这些工作的代码、框架或评估管线。
+
+| 预印本 | 对齐点 |
+|:---|:---|
+| [**From Fluent to Verifiable**](https://arxiv.org/abs/2602.13855)（Rasheed et al., 2026 预印本） | 与 P2/P5/P6/P8 对齐：将来源覆盖度、来源可靠性与矛盾透明度作为深度研究 agent 的一等审计目标。 |
+| [**Cited but Not Verified**](https://arxiv.org/abs/2605.06635)（Onweller et al., 2026 预印本） | 与 P1/P2/P5 对齐：从链接可达性、主题相关性、事实核验评估来源归因；说明表层引文质量不等于事实可靠性。 |
+| [**AutoResearch**](https://arxiv.org/abs/2607.02520)（Kumar et al., 2026 预印本） | 与 P2/P4/P8 对齐：在多 agent 研究工作流中，将引文验证与 claim-support 审计作为运行期过滤信号。 |
 
 ---
 
@@ -164,6 +177,8 @@ LLM_CONTENT_REVIEW=openai/gpt-5.5            # 对抗闸门，挑战执行
 站在 [**GenericAgent**](https://github.com/lsdefine/GenericAgent) 的肩膀上——`StepOutcome`-dispatch 模式、Goal Mode 自驱循环、分层记忆设计均直接移植自 GA。
 
 感谢 [**STORM 论文**](https://arxiv.org/abs/2402.14207)（Shao et al., NAACL 2024）的多视角研究框架，启发了我们的动态透镜方案；以及[社区衍生版](https://github.com/kamilwpaczce-svg/storm-research-method)的矛盾映射与同行评审机制。
+
+感谢 [**Co-STORM**](https://arxiv.org/abs/2408.15232)（Jiang et al., EMNLP 2024，Stanford OVAL）展示了人类参与和引导如何让多视角研究更可信——这正是我们可选「人工检查点」的灵感来源。
 
 感谢 **Caesar**（Liang et al., 2026）的 Generator-Verifier 对抗框架，启发了闸门设计。
 
