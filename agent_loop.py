@@ -314,8 +314,9 @@ def _no_tool_retry_prompt(handler: Any) -> str:
     if stage == 3.5 and getattr(handler, "adversarial_results", {}) and getattr(handler, "audit_result", None) is None:
         return (
             "Stage 3.5 gate needs a gate credential: call the document_audit "
-            "tool to run the five-point rubric (source locatability, "
-            "counterevidence, honest blind spots, label correctness, coverage). "
+            "tool to run the six-point rubric (source locatability, "
+            "counterevidence, honest blind spots, label correctness, coverage, "
+            "and claim-source support). "
             "No audit pass or explicit downgrade → no final brief."
         )
 
@@ -439,6 +440,25 @@ async def research_loop(
 
         output_directive = _output_directive(report_language)
         final_report_prompt = FINAL_REPORT_PROMPT_TEMPLATE.format(output_directive=output_directive)
+        audit_result = getattr(handler, "audit_result", {}) or {}
+        claim_support = audit_result.get("claim_support", [])
+        if claim_support:
+            support_lines = [
+                "- [{status}] {claim_id}: {claim} ({source_url})".format(
+                    status=record.get("status", "unknown"),
+                    claim_id=record.get("claim_id", "claim"),
+                    claim=record.get("claim", ""),
+                    source_url=record.get("source_url", ""),
+                )
+                for record in claim_support
+                if isinstance(record, Mapping)
+            ]
+            if support_lines:
+                final_report_prompt += (
+                    "\n\n来源支持审计台账（必须保留其状态；不得把 weakly_supported "
+                    "或失败状态写成已验证）:\n"
+                    + "\n".join(support_lines[:10])
+                )
         # P8/P4: surface gate downgrade records and operator feedback into the
         # final brief — the generator must acknowledge them, not ignore them.
         pending_notes = list(getattr(handler, "open_questions", []) or [])

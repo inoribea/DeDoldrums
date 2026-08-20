@@ -22,6 +22,7 @@ try:
         do_explore,
         do_reflect,
         do_sub_research,
+        fetch_and_extract,
         validate_finding,
         web_search,
     )
@@ -41,6 +42,7 @@ except ImportError:  # pragma: no cover - direct script execution path.
         do_explore,
         do_reflect,
         do_sub_research,
+        fetch_and_extract,
         validate_finding,
         web_search,
     )
@@ -80,8 +82,12 @@ class ResearchHandler:
         self.audit_result: dict[str, Any] | None = None
         self.gate_credential: dict[str, Any] | None = None
         self.open_questions: list[str] = []
+        # The source fetcher is injectable for deterministic tests; production
+        # audits use the same bounded HTTP(S) extractor as ``explore``.
+        self.source_fetcher: Any = fetch_and_extract
         # P5: schema violations recorded during finding ingestion.
         self._finding_warnings: list[str] = []
+        self._finding_counter = 0
         self.should_exit = False
 
     def _append_finding(self, finding: dict[str, Any]) -> None:
@@ -93,6 +99,8 @@ class ResearchHandler:
         """
         if "claim" in finding:
             normalized, warnings = validate_finding(finding)
+            self._finding_counter += 1
+            normalized.setdefault("finding_id", f"finding_{self._finding_counter}")
             self._finding_warnings.extend(warnings)
             if warnings and self.on_status:
                 self.on_status(f"Finding schema: {warnings[0]}")
@@ -186,7 +194,7 @@ class ResearchHandler:
         return StepOutcome(result)
 
     async def do_document_audit(self, args: dict[str, Any], response: Any) -> StepOutcome:
-        """Document-level audit against the five-item rubric (P2).
+        """Document-level audit against the six-item rubric (P2).
 
         Running the audit records the gate credential (P8): a pass grants
         ``audit_pass``; an explicit ``downgrade_note`` on a failing audit
@@ -194,7 +202,7 @@ class ResearchHandler:
         Without either, the state machine refuses to advance to the final brief.
         """
         if self.on_status:
-            self.on_status("Document audit: running 5-point rubric…")
+            self.on_status("Document audit: running 6-point rubric…")
         result = await audit_document(
             self.findings,
             self.lenses_used,
@@ -202,6 +210,7 @@ class ResearchHandler:
             self.stage_artifacts,
             self.llm,
             on_status=self.on_status,
+            source_fetcher=self.source_fetcher,
         )
         self.audit_result = result
 

@@ -111,13 +111,15 @@ STAGE35_ADVERSARIAL_GATE = """[研究阶段 3.5/4: 对抗验证闸门]
 ## 文档级审计（P2/P8 — 出简报前的强制凭证）
 
 完成对抗验证后，必须调用 document_audit 工具做文档级体检
-（audit 查整体，challenge 打单点，两者互补）。audit 依据五条 rubric:
+（audit 查整体，challenge 打单点，两者互补）。audit 依据六条 rubric:
 
 1. 每条关键论断有可定位来源（抽查 findings 的 source_url）
 2. 反例被考虑（counterevidence 非空且具体）
 3. 盲点声明诚实（Blind Spots 列出搜过/没试，非空话）
 4. 标签正确（[已知] 都有来源；无来源的标了猜测）
 5. 覆盖完整（每个 lens 都有产出，无空转方向）
+6. claim-source 支持度（每条 claim 分类为 supported / weakly_supported /
+   unsupported / wrong_source / missing_source；后三种会使 audit 失败）
 
 audit 输出 pass/fail + 缺口清单（≤5 条）。
 
