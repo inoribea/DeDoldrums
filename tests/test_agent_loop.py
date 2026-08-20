@@ -12,6 +12,7 @@ from agent_loop import (
     _compact_final_report_messages,
     _fallback_final_brief,
     _no_tool_retry_prompt,
+    _plain_language_evidence_notes,
     research_loop,
 )
 from llm import ChatResponse
@@ -64,6 +65,57 @@ class FakeLlmClient:
 
 
 class ResearchLoopTests(unittest.TestCase):
+    def test_plain_language_evidence_notes_translate_internal_statuses(self) -> None:
+        notes = _plain_language_evidence_notes(
+            {
+                "passed": False,
+                "claim_support": [
+                    {"status": "weakly_supported", "claim": "Parameter history may improve edits."},
+                    {"status": "missing_source", "claim": "The tool always exports manufacturing-ready solids."},
+                ],
+            },
+            {"type": "downgrade", "reason": "missing evidence"},
+            ["[降级] 缺少跨软件重放数据"],
+            "en",
+        )
+
+        self.assertIn("Partially supported", notes)
+        self.assertIn("No locatable source", notes)
+        self.assertIn("Lower-confidence note: 缺少跨软件重放数据", notes)
+        self.assertNotIn("audit pass", notes.lower())
+        self.assertNotIn("downgrade", notes.lower())
+
+    def test_final_report_prompt_uses_plain_evidence_language(self) -> None:
+        handler = FinalReviewHandler()
+        handler.audit_result = {
+            "passed": True,
+            "claim_support": [
+                {"status": "unsupported", "claim": "A cited claim lacks direct support."},
+            ],
+        }
+        handler.gate_credential = {"type": "audit_pass"}
+        handler.open_questions = ["[降级] Evidence remains incomplete"]
+        client = FakeLlmClient([
+            ChatResponse(content="Refined question"),
+            ChatResponse(content="Final research brief"),
+        ])
+
+        brief = asyncio.run(research_loop(
+            client,
+            "Test question",
+            handler=handler,
+            report_language="en",
+        ))
+
+        self.assertEqual(brief, "Final research brief")
+        final_prompt = str(client.requests[-1][-1]["content"])
+        self.assertIn("Evidence notes", final_prompt)
+        self.assertIn("The cited source does not establish this claim", final_prompt)
+        self.assertIn("Lower-confidence note: Evidence remains incomplete", final_prompt)
+        self.assertNotIn("adversarial gate", final_prompt.lower())
+        self.assertNotIn("audit pass", final_prompt.lower())
+        self.assertNotIn("downgrade record", final_prompt.lower())
+
     def test_final_brief_generated_directly_after_refinement(self) -> None:
         """Stage >= 4 triggers final brief generation directly — no peer review step."""
         client = FakeLlmClient([

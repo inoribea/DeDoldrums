@@ -41,7 +41,13 @@ FINAL_REPORT_PROMPT_TEMPLATE = (
     "Based on the completed four-stage research, generate the final comprehensive "
     "research brief. Include: summary, key findings (with confidence scores), "
     "hidden connections, actionable recommendations, frontier questions, and "
-    "known limitations.\n\n{output_directive}"
+    "known limitations.\n\n"
+    "Write for an informed reader, not for the pipeline operator. Do not describe "
+    "internal pipeline machinery as if it were a research finding. Translate evidence quality into plain "
+    "language: explain what the cited source supports, what remains uncertain, "
+    "and what the reader should not treat as established fact. Never hide a weak "
+    "or missing source just to make the conclusion sound cleaner.\n\n"
+    "{output_directive}"
 )
 
 FINAL_REPORT_RETRY_PROMPT = (
@@ -209,6 +215,65 @@ def _fallback_final_brief(compact_messages: Sequence[Mapping[str, Any]], reason:
         "This is a fallback brief assembled from completed pipeline outputs; it may be "
         "less polished than a freshly generated final synthesis."
     )
+
+
+def _plain_language_evidence_notes(
+    audit_result: Mapping[str, Any],
+    gate_credential: Mapping[str, Any] | None,
+    pending_notes: Sequence[str],
+    report_language: str | None,
+) -> str:
+    """Translate internal audit state into reader-facing evidence guidance."""
+    english = report_language == "en"
+    heading = "## Evidence notes" if english else "## 证据说明"
+    lines: list[str] = [heading]
+
+    if audit_result.get("passed") and gate_credential:
+        lines.append(
+            "- No blocking source-support gaps were found in the checks that ran; "
+            "this does not make the conclusions certain."
+            if english
+            else "- 已完成的检查没有发现会阻断结论的来源支持缺口；这不等于结论已经确定无误。"
+        )
+    elif not audit_result:
+        lines.append(
+            "- Evidence checks did not complete; treat this as research notes, not a settled conclusion."
+            if english
+            else "- 证据检查未完成；请把这份内容当作研究笔记，不要当作已经定论。"
+        )
+
+    status_labels = {
+        "supported": "Source supports this claim" if english else "来源支持该断言",
+        "weakly_supported": "Partially supported; treat this as a limited inference" if english else "仅得到部分支持；请把它当作有限推断",
+        "unsupported": "The cited source does not establish this claim" if english else "引用来源不足以证明该断言",
+        "wrong_source": "The citation does not support this claim" if english else "引用来源并不支持该断言",
+        "missing_source": "No locatable source was available; treat this as a conjecture or open question" if english else "没有可定位的来源；请把它当作猜测或待解决问题",
+    }
+    claim_support = audit_result.get("claim_support", [])
+    records = claim_support[:10] if isinstance(claim_support, list) else []
+    for record in records:
+        if not isinstance(record, Mapping):
+            continue
+        status = str(record.get("status", "")).strip()
+        label = status_labels.get(status)
+        claim = str(record.get("claim", "")).strip()
+        if label and claim:
+            lines.append(f"- {label}: {claim}")
+
+    for note in pending_notes[-6:]:
+        clean_note = str(note).strip()
+        if clean_note.startswith("[降级]"):
+            clean_note = clean_note[len("[降级]"):].strip()
+            prefix = "Lower-confidence note" if english else "较低可信度说明"
+        elif clean_note.startswith("[操作者反馈]"):
+            clean_note = clean_note[len("[操作者反馈]"):].strip()
+            prefix = "Reader feedback" if english else "读者补充"
+        else:
+            prefix = "Open question" if english else "待解决问题"
+        if clean_note:
+            lines.append(f"- {prefix}: {clean_note}")
+
+    return "\n".join(lines)
 
 
 def format_memories(memories: Sequence[dict[str, Any]]) -> str:
@@ -441,33 +506,13 @@ async def research_loop(
         output_directive = _output_directive(report_language)
         final_report_prompt = FINAL_REPORT_PROMPT_TEMPLATE.format(output_directive=output_directive)
         audit_result = getattr(handler, "audit_result", {}) or {}
-        claim_support = audit_result.get("claim_support", [])
-        if claim_support:
-            support_lines = [
-                "- [{status}] {claim_id}: {claim} ({source_url})".format(
-                    status=record.get("status", "unknown"),
-                    claim_id=record.get("claim_id", "claim"),
-                    claim=record.get("claim", ""),
-                    source_url=record.get("source_url", ""),
-                )
-                for record in claim_support
-                if isinstance(record, Mapping)
-            ]
-            if support_lines:
-                final_report_prompt += (
-                    "\n\n来源支持审计台账（必须保留其状态；不得把 weakly_supported "
-                    "或失败状态写成已验证）:\n"
-                    + "\n".join(support_lines[:10])
-                )
-        # P8/P4: surface gate downgrade records and operator feedback into the
-        # final brief — the generator must acknowledge them, not ignore them.
         pending_notes = list(getattr(handler, "open_questions", []) or [])
-        if pending_notes:
-            notes_block = "\n".join(f"- {note}" for note in pending_notes[-6:])
-            final_report_prompt += (
-                "\n\n研究过程中的待决问题 / 降级记录 / 操作者反馈（必须在简报中显式回应）:\n"
-                f"{notes_block}"
-            )
+        final_report_prompt += "\n\n" + _plain_language_evidence_notes(
+            audit_result,
+            getattr(handler, "gate_credential", None),
+            pending_notes,
+            report_language,
+        )
         retry_messages = compact + [{"role": "user", "content": final_report_prompt}]
         last_failure = "empty response"
         for attempt in range(FINAL_REPORT_ATTEMPTS):
